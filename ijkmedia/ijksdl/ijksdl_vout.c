@@ -26,7 +26,7 @@
 #include <stdlib.h>
 
 #include <assert.h>
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) && !defined(IJK_ANDROID_LEGACY_SURFACE)
 #include <android/native_window_jni.h>
 #endif
 

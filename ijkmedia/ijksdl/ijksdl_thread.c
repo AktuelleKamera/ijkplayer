@@ -37,7 +37,9 @@ static void *SDL_RunThread(void *data)
 {
     SDL_Thread *thread = data;
     ALOGI("SDL_RunThread: [%d] %s\n", (int)gettid(), thread->name);
+#if !defined(IJK_ANDROID_LEGACY_SURFACE)
     pthread_setname_np(pthread_self(), thread->name);
+#endif
     thread->retval = thread->func(thread->data);
 #ifdef __ANDROID__
     SDL_JNI_DetachThreadEnv();

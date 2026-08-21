@@ -6,7 +6,7 @@
 
 #include <errno.h>
 #include <stdlib.h>
-#ifdef __ANDROID__
+#if defined(__ANDROID__) && 0
 #include <sys/prctl.h>
 #endif
 #ifdef __APPLE__
@@ -1766,7 +1766,7 @@ static int las_probe(AVProbeData* p) {
 
 static int las_read_header(AVFormatContext* s) {
     // for debug
-#ifdef __ANDROID__
+#if defined(__ANDROID__) && 0
     pthread_setname_np(pthread_self(), "ffplay_read_thread");
 #elif defined(__APPLE__)
     pthread_setname_np("ffplay_read_thread");

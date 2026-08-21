@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# NDK r10e emits the Windows `copy /b/y` command even under MSYS2 bash.
+# Keep the compatibility command local to this checkout instead of modifying
+# the installed NDK.
+set -e
+
+args=("$@")
+if [ "${#args[@]}" -lt 2 ]; then
+    exit 1
+fi
+
+src="${args[$((${#args[@]} - 2))]}"
+dst="${args[$((${#args[@]} - 1))]}"
+if command -v cygpath >/dev/null 2>&1; then
+    # MSYS2 receives NDK's backslash-prefixed /e paths as \e\... .
+    if [[ "$src" == \\* ]]; then src="/${src#\\}"; src="${src//\\//}"; fi
+    if [[ "$dst" == \\* ]]; then dst="/${dst#\\}"; dst="${dst//\\//}"; fi
+    case "$src" in
+        [A-Za-z]:[\\/]* ) src=$(cygpath -u "$src") ;;
+    esac
+    case "$dst" in
+        [A-Za-z]:[\\/]* ) dst=$(cygpath -u "$dst") ;;
+    esac
+fi
+cp -f "$src" "$dst"

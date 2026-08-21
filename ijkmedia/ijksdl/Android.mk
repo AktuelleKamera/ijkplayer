@@ -21,7 +21,19 @@ LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 LOCAL_CFLAGS += -std=c99
-LOCAL_LDLIBS += -llog -landroid -lOpenSLES -lEGL -lGLESv2
+
+# Android 2.1/2.2 do not expose ANativeWindow, OpenSL ES, or libandroid.
+# Use the private Surface backend there; newer API levels keep the normal path.
+IJK_ANDROID_LEGACY_SURFACE := 0
+ifneq ($(filter android-3 android-4 android-5 android-8,$(APP_PLATFORM)),)
+IJK_ANDROID_LEGACY_SURFACE := 1
+LOCAL_CFLAGS += -DIJK_ANDROID_LEGACY_SURFACE=1
+endif
+
+LOCAL_LDLIBS += -llog
+ifeq ($(IJK_ANDROID_LEGACY_SURFACE),0)
+LOCAL_LDLIBS += -landroid -lOpenSLES -lEGL -lGLESv2
+endif
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH)
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/..
@@ -31,7 +43,6 @@ LOCAL_C_INCLUDES += $(LOCAL_PATH)/../ijkj4a
 
 LOCAL_SRC_FILES += ijksdl_aout.c
 LOCAL_SRC_FILES += ijksdl_audio.c
-LOCAL_SRC_FILES += ijksdl_egl.c
 LOCAL_SRC_FILES += ijksdl_error.c
 LOCAL_SRC_FILES += ijksdl_mutex.c
 LOCAL_SRC_FILES += ijksdl_stdinc.c
@@ -39,6 +50,8 @@ LOCAL_SRC_FILES += ijksdl_thread.c
 LOCAL_SRC_FILES += ijksdl_timer.c
 LOCAL_SRC_FILES += ijksdl_vout.c
 LOCAL_SRC_FILES += ijksdl_extra_log.c
+ifeq ($(IJK_ANDROID_LEGACY_SURFACE),0)
+LOCAL_SRC_FILES += ijksdl_egl.c
 LOCAL_SRC_FILES += gles2/color.c
 LOCAL_SRC_FILES += gles2/common.c
 LOCAL_SRC_FILES += gles2/renderer.c
@@ -50,6 +63,7 @@ LOCAL_SRC_FILES += gles2/fsh/rgb.fsh.c
 LOCAL_SRC_FILES += gles2/fsh/yuv420p.fsh.c
 LOCAL_SRC_FILES += gles2/fsh/yuv444p10le.fsh.c
 LOCAL_SRC_FILES += gles2/vsh/mvp.vsh.c
+endif
 
 LOCAL_SRC_FILES += dummy/ijksdl_vout_dummy.c
 
@@ -57,10 +71,8 @@ LOCAL_SRC_FILES += ffmpeg/ijksdl_vout_overlay_ffmpeg.c
 LOCAL_SRC_FILES += ffmpeg/abi_all/image_convert.c
 
 LOCAL_SRC_FILES += android/android_audiotrack.c
-LOCAL_SRC_FILES += android/android_nativewindow.c
 LOCAL_SRC_FILES += android/ijksdl_android_jni.c
 LOCAL_SRC_FILES += android/ijksdl_aout_android_audiotrack.c
-LOCAL_SRC_FILES += android/ijksdl_aout_android_opensles.c
 LOCAL_SRC_FILES += android/ijksdl_codec_android_mediacodec_dummy.c
 LOCAL_SRC_FILES += android/ijksdl_codec_android_mediacodec_internal.c
 LOCAL_SRC_FILES += android/ijksdl_codec_android_mediacodec_java.c
@@ -68,9 +80,15 @@ LOCAL_SRC_FILES += android/ijksdl_codec_android_mediacodec.c
 LOCAL_SRC_FILES += android/ijksdl_codec_android_mediadef.c
 LOCAL_SRC_FILES += android/ijksdl_codec_android_mediaformat_java.c
 LOCAL_SRC_FILES += android/ijksdl_codec_android_mediaformat.c
+ifeq ($(IJK_ANDROID_LEGACY_SURFACE),1)
+LOCAL_SRC_FILES += android/ijksdl_vout_android_legacy.c
+else
+LOCAL_SRC_FILES += android/android_nativewindow.c
+LOCAL_SRC_FILES += android/ijksdl_aout_android_opensles.c
 LOCAL_SRC_FILES += android/ijksdl_vout_android_nativewindow.c
 LOCAL_SRC_FILES += android/ijksdl_vout_android_surface.c
 LOCAL_SRC_FILES += android/ijksdl_vout_overlay_android_mediacodec.c
+endif
 
 LOCAL_SHARED_LIBRARIES := ijkffmpeg
 LOCAL_STATIC_LIBRARIES := cpufeatures libyuv_static ijkj4a

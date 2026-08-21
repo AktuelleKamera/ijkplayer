@@ -27,7 +27,12 @@ ifeq ($(TARGET_ARCH_ABI),armeabi-v7a)
 LOCAL_CFLAGS += -mfloat-abi=soft
 endif
 LOCAL_CFLAGS += -std=c99
-LOCAL_LDLIBS += -llog -landroid
+LOCAL_LDLIBS += -llog
+ifneq ($(filter android-3 android-4 android-5 android-8,$(APP_PLATFORM)),)
+LOCAL_CFLAGS += -DIJK_ANDROID_LEGACY_SURFACE=1
+else
+LOCAL_LDLIBS += -landroid
+endif
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH)
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/..

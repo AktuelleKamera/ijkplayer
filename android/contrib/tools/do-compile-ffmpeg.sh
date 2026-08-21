@@ -42,7 +42,7 @@ FF_BUILD_ROOT=`pwd`
 # The old MSYS2 image does not ship pkg-config; use the local cross-build shim.
 export PATH="$FF_BUILD_ROOT/tools:$PATH"
 export PKG_CONFIG="$FF_BUILD_ROOT/tools/arm-linux-androideabi-pkg-config"
-FF_ANDROID_PLATFORM=android-9
+FF_ANDROID_PLATFORM=${IJK_ANDROID_PLATFORM:-android-9}
 
 
 FF_BUILD_NAME=
@@ -200,6 +200,10 @@ if [ ! -d $FF_SOURCE ]; then
 fi
 
 FF_TOOLCHAIN_PATH=$FF_BUILD_ROOT/build/$FF_BUILD_NAME/toolchain
+if [ "$FF_ANDROID_PLATFORM" != "android-9" ]; then
+    # Keep API-specific standalone toolchains separate from the existing builds.
+    FF_TOOLCHAIN_PATH=$FF_BUILD_ROOT/build/$FF_BUILD_NAME/toolchain-$FF_ANDROID_PLATFORM
+fi
 FF_MAKE_TOOLCHAIN_FLAGS="$FF_MAKE_TOOLCHAIN_FLAGS --install-dir=$FF_TOOLCHAIN_PATH"
 
 FF_SYSROOT=$FF_TOOLCHAIN_PATH/sysroot

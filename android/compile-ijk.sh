@@ -31,6 +31,13 @@ UNAME_S=$(uname -s)
 
 FF_MAKEFLAGS=
 NDK_BUILD_EXTRA_ARGS=
+if [ -n "$IJK_ANDROID_PLATFORM" ]; then
+    NDK_BUILD_EXTRA_ARGS="APP_PLATFORM=$IJK_ANDROID_PLATFORM"
+fi
+
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+export PATH="$SCRIPT_DIR/tools:$PATH"
+"$SCRIPT_DIR/tools/prepare-msys2-ndk.sh"
 if which nproc >/dev/null
 then
     FF_MAKEFLAGS=-j`nproc`
@@ -41,8 +48,8 @@ fi
 
 do_sub_cmd () {
     SUB_CMD=$1
-    if [ -L "./android-ndk-prof" ]; then
-        rm android-ndk-prof
+    if [ -e "./android-ndk-prof" ] || [ -L "./android-ndk-prof" ]; then
+        rm -rf android-ndk-prof
     fi
 
     if [ "$PARAM_SUB_CMD" = 'prof' ]; then

@@ -23,10 +23,7 @@ import android.annotation.TargetApi;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.res.AssetFileDescriptor;
-import android.graphics.SurfaceTexture;
 import android.graphics.Rect;
-import android.media.MediaCodecInfo;
-import android.media.MediaCodecList;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
@@ -1229,55 +1226,35 @@ public final class IjkMediaPlayer extends AbstractMediaPlayer {
                 return null;
 
             Log.i(TAG, String.format(Locale.US, "onSelectCodec: mime=%s, profile=%d, level=%d", mimeType, profile, level));
-            ArrayList<IjkMediaCodecInfo> candidateCodecList = new ArrayList<IjkMediaCodecInfo>();
-            int numCodecs = MediaCodecList.getCodecCount();
-            for (int i = 0; i < numCodecs; i++) {
-                MediaCodecInfo codecInfo = MediaCodecList.getCodecInfoAt(i);
-                Log.d(TAG, String.format(Locale.US, "  found codec: %s", codecInfo.getName()));
-                if (codecInfo.isEncoder())
-                    continue;
-
-                String[] types = codecInfo.getSupportedTypes();
-                if (types == null)
-                    continue;
-
-                for(String type: types) {
-                    if (TextUtils.isEmpty(type))
+            // Keep API 16 classes out of the verifier's direct references. Android 2.1
+            // does not contain MediaCodecList/MediaCodecInfo at all.
+            try {
+                Class<?> codecListClass = Class.forName("android.media.MediaCodecList");
+                Class<?> codecInfoClass = Class.forName("android.media.MediaCodecInfo");
+                int numCodecs = ((Integer) codecListClass.getMethod("getCodecCount").invoke(null));
+                for (int i = 0; i < numCodecs; i++) {
+                    Object codecInfo = codecListClass.getMethod("getCodecInfoAt", Integer.TYPE)
+                            .invoke(null, i);
+                    String codecName = (String) codecInfoClass.getMethod("getName").invoke(codecInfo);
+                    Log.d(TAG, String.format(Locale.US, "  found codec: %s", codecName));
+                    Boolean encoder = (Boolean) codecInfoClass.getMethod("isEncoder").invoke(codecInfo);
+                    if (encoder)
                         continue;
 
-                    Log.d(TAG, String.format(Locale.US, "    mime: %s", type));
-                    if (!type.equalsIgnoreCase(mimeType))
+                    String[] types = (String[]) codecInfoClass.getMethod("getSupportedTypes").invoke(codecInfo);
+                    if (types == null)
                         continue;
-
-                    IjkMediaCodecInfo candidate = IjkMediaCodecInfo.setupCandidate(codecInfo, mimeType);
-                    if (candidate == null)
-                        continue;
-
-                    candidateCodecList.add(candidate);
-                    Log.i(TAG, String.format(Locale.US, "candidate codec: %s rank=%d", codecInfo.getName(), candidate.mRank));
-                    candidate.dumpProfileLevels(mimeType);
+                    for (String type : types) {
+                        if (!TextUtils.isEmpty(type) && type.equalsIgnoreCase(mimeType)) {
+                            Log.i(TAG, String.format(Locale.US, "selected codec: %s", codecName));
+                            return codecName;
+                        }
+                    }
                 }
+            } catch (Throwable e) {
+                Log.d(TAG, "MediaCodec API unavailable; using FFmpeg software decoder", e);
             }
-
-            if (candidateCodecList.isEmpty()) {
-                return null;
-            }
-
-            IjkMediaCodecInfo bestCodec = candidateCodecList.get(0);
-
-            for (IjkMediaCodecInfo codec : candidateCodecList) {
-                if (codec.mRank > bestCodec.mRank) {
-                    bestCodec = codec;
-                }
-            }
-
-            if (bestCodec.mRank < IjkMediaCodecInfo.RANK_LAST_CHANCE) {
-                Log.w(TAG, String.format(Locale.US, "unaccetable codec: %s", bestCodec.mCodecInfo.getName()));
-                return null;
-            }
-
-            Log.i(TAG, String.format(Locale.US, "selected codec: %s rank=%d", bestCodec.mCodecInfo.getName(), bestCodec.mRank));
-            return bestCodec.mCodecInfo.getName();
+            return null;
         }
     }
 
