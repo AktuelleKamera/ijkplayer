@@ -24,10 +24,10 @@ LOCAL_CFLAGS += -std=c99
 LOCAL_LDLIBS += -llog -landroid -lOpenSLES -lEGL -lGLESv2
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH)
-LOCAL_C_INCLUDES += $(realpath $(LOCAL_PATH)/..)
+LOCAL_C_INCLUDES += $(LOCAL_PATH)/..
 LOCAL_C_INCLUDES += $(MY_APP_FFMPEG_INCLUDE_PATH)
-LOCAL_C_INCLUDES += $(realpath $(LOCAL_PATH)/../ijkyuv/include)
-LOCAL_C_INCLUDES += $(realpath $(LOCAL_PATH)/../ijkj4a)
+LOCAL_C_INCLUDES += $(LOCAL_PATH)/../ijkyuv/include
+LOCAL_C_INCLUDES += $(LOCAL_PATH)/../ijkj4a
 
 LOCAL_SRC_FILES += ijksdl_aout.c
 LOCAL_SRC_FILES += ijksdl_audio.c
@@ -73,7 +73,7 @@ LOCAL_SRC_FILES += android/ijksdl_vout_android_surface.c
 LOCAL_SRC_FILES += android/ijksdl_vout_overlay_android_mediacodec.c
 
 LOCAL_SHARED_LIBRARIES := ijkffmpeg
-LOCAL_STATIC_LIBRARIES := cpufeatures yuv_static ijkj4a
+LOCAL_STATIC_LIBRARIES := cpufeatures libyuv_static ijkj4a
 
 LOCAL_MODULE := ijksdl
 include $(BUILD_SHARED_LIBRARY)

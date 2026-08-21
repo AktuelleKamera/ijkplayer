@@ -1,0 +1,17 @@
+#!/bin/sh
+# Minimal pkg-config implementation for the old MSYS2 image. FFmpeg only
+# needs version detection and the libxml2 flags while configuring DASH.
+case "$1" in
+  --version)
+    echo "0.29.2"
+    exit 0
+    ;;
+esac
+
+PKG_CONFIG_PREFIX="${IJK_PKG_CONFIG_PREFIX:-$PWD/../build/ffmpeg-armv7a/output}"
+case "$*" in
+  *--exists*) exit 0 ;;
+  *--cflags*) echo "-I$PKG_CONFIG_PREFIX/include -I$PKG_CONFIG_PREFIX/include/libxml2" ;;
+  *--libs*) echo "-L$PKG_CONFIG_PREFIX/lib -lxml2 -lm" ;;
+  *) exit 1 ;;
+esac

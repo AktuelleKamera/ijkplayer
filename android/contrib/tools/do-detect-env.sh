@@ -55,7 +55,7 @@ case "$IJK_NDK_REL" in
                 Darwin)
                     export IJK_MAKE_TOOLCHAIN_FLAGS="$IJK_MAKE_TOOLCHAIN_FLAGS --system=darwin-x86_64"
                 ;;
-                CYGWIN_NT-*)
+                CYGWIN_NT-*|MSYS_NT-*)
                     export IJK_MAKE_TOOLCHAIN_FLAGS="$IJK_MAKE_TOOLCHAIN_FLAGS --system=windows-x86_64"
                 ;;
             esac
@@ -93,7 +93,14 @@ case "$UNAME_S" in
     CYGWIN_NT-*)
         IJK_WIN_TEMP="$(cygpath -am /tmp)"
         export TEMPDIR=$IJK_WIN_TEMP/
+        export IJK_MAKE_FLAG=-j12
 
         echo "Cygwin temp prefix=$IJK_WIN_TEMP/"
+    ;;
+    MSYS_NT-*)
+        export TEMPDIR=/tmp/
+        export IJK_MAKE_FLAG=-j12
+
+        echo "MSYS2 temp prefix=$TEMPDIR"
     ;;
 esac

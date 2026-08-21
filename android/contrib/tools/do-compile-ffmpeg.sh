@@ -25,7 +25,6 @@ echo "[*] check env $1"
 echo "===================="
 set -e
 
-
 #--------------------
 # common defines
 FF_ARCH=$1
@@ -40,6 +39,9 @@ fi
 
 
 FF_BUILD_ROOT=`pwd`
+# The old MSYS2 image does not ship pkg-config; use the local cross-build shim.
+export PATH="$FF_BUILD_ROOT/tools:$PATH"
+export PKG_CONFIG="$FF_BUILD_ROOT/tools/arm-linux-androideabi-pkg-config"
 FF_ANDROID_PLATFORM=android-9
 
 
@@ -104,7 +106,12 @@ elif [ "$FF_ARCH" = "armv5" ]; then
 
     FF_CFG_FLAGS="$FF_CFG_FLAGS --arch=arm"
 
-    FF_EXTRA_CFLAGS="$FF_EXTRA_CFLAGS -march=armv5te -mtune=arm9tdmi -msoft-float"
+    if [ "$IJK_ARMV6_DEFAULT" = "1" ]; then
+        # Keep the armeabi compiler defaults for the ARMv6/VFP variant.
+        FF_EXTRA_CFLAGS="$FF_EXTRA_CFLAGS"
+    else
+        FF_EXTRA_CFLAGS="$FF_EXTRA_CFLAGS -march=armv5te -mtune=arm9tdmi -msoft-float"
+    fi
     FF_EXTRA_LDFLAGS="$FF_EXTRA_LDFLAGS"
 
     FF_ASSEMBLER_SUB_DIRS="arm"
@@ -136,12 +143,12 @@ elif [ "$FF_ARCH" = "x86_64" ]; then
     FF_CROSS_PREFIX=x86_64-linux-android
     FF_TOOLCHAIN_NAME=${FF_CROSS_PREFIX}-${FF_GCC_64_VER}
 
-    FF_CFG_FLAGS="$FF_CFG_FLAGS --arch=x86_64 --enable-yasm"
+    FF_CFG_FLAGS="$FF_CFG_FLAGS --arch=x86_64 --disable-asm --disable-x86asm"
 
     FF_EXTRA_CFLAGS="$FF_EXTRA_CFLAGS"
     FF_EXTRA_LDFLAGS="$FF_EXTRA_LDFLAGS"
 
-    FF_ASSEMBLER_SUB_DIRS="x86"
+    FF_ASSEMBLER_SUB_DIRS=""
 
 elif [ "$FF_ARCH" = "arm64" ]; then
     FF_ANDROID_PLATFORM=android-21
@@ -160,6 +167,23 @@ elif [ "$FF_ARCH" = "arm64" ]; then
     FF_EXTRA_LDFLAGS="$FF_EXTRA_LDFLAGS"
 
     FF_ASSEMBLER_SUB_DIRS="aarch64 neon"
+
+elif [ "$FF_ARCH" = "mips" ]; then
+    FF_BUILD_NAME=ffmpeg-mips
+    FF_BUILD_NAME_OPENSSL=openssl-mips
+    FF_BUILD_NAME_LIBSOXR=libsoxr-mips
+    FF_SOURCE=$FF_BUILD_ROOT/$FF_BUILD_NAME
+
+    FF_CROSS_PREFIX=mipsel-linux-android
+    FF_TOOLCHAIN_NAME=${FF_CROSS_PREFIX}-${FF_GCC_VER}
+
+    FF_CFG_FLAGS="$FF_CFG_FLAGS --arch=mips --cpu=mips32r2"
+    FF_CFG_FLAGS="$FF_CFG_FLAGS --disable-mipsfpu --disable-mipsdsp --disable-mipsdspr2"
+
+    FF_EXTRA_CFLAGS="$FF_EXTRA_CFLAGS -mips32r2 -msoft-float"
+    FF_EXTRA_LDFLAGS="$FF_EXTRA_LDFLAGS"
+
+    FF_ASSEMBLER_SUB_DIRS="mips"
 
 else
     echo "unknown architecture $FF_ARCH";
@@ -186,7 +210,7 @@ FF_DEP_LIBSOXR_INC=$FF_BUILD_ROOT/build/$FF_BUILD_NAME_LIBSOXR/output/include
 FF_DEP_LIBSOXR_LIB=$FF_BUILD_ROOT/build/$FF_BUILD_NAME_LIBSOXR/output/lib
 
 case "$UNAME_S" in
-    CYGWIN_NT-*)
+    CYGWIN_NT-*|MSYS_NT-*)
         FF_SYSROOT="$(cygpath -am $FF_SYSROOT)"
         FF_PREFIX="$(cygpath -am $FF_PREFIX)"
     ;;
@@ -237,6 +261,9 @@ FF_CFLAGS="-O3 -Wall -pipe \
 
 export COMMON_FF_CFG_FLAGS=
 . $FF_BUILD_ROOT/../../config/module.sh
+if [ "$IJK_ARMV5_NO_VFP" = "1" ]; then
+    COMMON_FF_CFG_FLAGS="$COMMON_FF_CFG_FLAGS --disable-vfp"
+fi
 
 
 #--------------------
@@ -258,6 +285,15 @@ if [ -f "${FF_DEP_LIBSOXR_LIB}/libsoxr.a" ]; then
     FF_DEP_LIBS="$FF_DEP_LIBS -L${FF_DEP_LIBSOXR_LIB} -lsoxr"
 fi
 
+# FFmpeg's MPEG-DASH demuxer in 4.0 uses libxml2 for MPD parsing.
+FF_LIBXML2_PREFIX=$FF_BUILD_ROOT/build/$FF_BUILD_NAME/output
+export IJK_PKG_CONFIG_PREFIX="$FF_LIBXML2_PREFIX"
+if [ -f "${FF_LIBXML2_PREFIX}/lib/libxml2.a" ]; then
+    FF_CFLAGS="$FF_CFLAGS -I${FF_LIBXML2_PREFIX}/include -I${FF_LIBXML2_PREFIX}/include/libxml2"
+    FF_DEP_LIBS="$FF_DEP_LIBS -L${FF_LIBXML2_PREFIX}/lib -lxml2"
+    FF_CFG_FLAGS="$FF_CFG_FLAGS --enable-libxml2 --pkg-config=$PKG_CONFIG"
+fi
+
 FF_CFG_FLAGS="$FF_CFG_FLAGS $COMMON_FF_CFG_FLAGS"
 
 #--------------------
@@ -269,9 +305,10 @@ FF_CFG_FLAGS="$FF_CFG_FLAGS --cross-prefix=${FF_CROSS_PREFIX}-"
 FF_CFG_FLAGS="$FF_CFG_FLAGS --enable-cross-compile"
 FF_CFG_FLAGS="$FF_CFG_FLAGS --target-os=linux"
 FF_CFG_FLAGS="$FF_CFG_FLAGS --enable-pic"
+FF_CFG_FLAGS="$FF_CFG_FLAGS --disable-autodetect"
 # FF_CFG_FLAGS="$FF_CFG_FLAGS --disable-symver"
 
-if [ "$FF_ARCH" = "x86" ]; then
+if [ "$FF_ARCH" = "x86" ] || [ "$FF_ARCH" = "x86_64" ]; then
     FF_CFG_FLAGS="$FF_CFG_FLAGS --disable-asm"
 else
     # Optimization options (experts only):
@@ -302,7 +339,7 @@ if [ -f "./config.h" ]; then
     echo 'reuse configure'
 else
     which $CC
-    ./configure $FF_CFG_FLAGS \
+    bash ./configure $FF_CFG_FLAGS \
         --extra-cflags="$FF_CFLAGS $FF_EXTRA_CFLAGS" \
         --extra-ldflags="$FF_DEP_LIBS $FF_EXTRA_LDFLAGS"
     make clean

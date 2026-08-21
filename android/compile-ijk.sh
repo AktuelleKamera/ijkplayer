@@ -24,12 +24,13 @@ fi
 
 REQUEST_TARGET=$1
 REQUEST_SUB_CMD=$2
-ACT_ABI_32="armv5 armv7a x86"
-ACT_ABI_64="armv5 armv7a arm64 x86 x86_64"
+ACT_ABI_32="armv5 armv7a x86 mips"
+ACT_ABI_64="armv5 armv7a arm64 x86 x86_64 mips"
 ACT_ABI_ALL=$ACT_ABI_64
 UNAME_S=$(uname -s)
 
 FF_MAKEFLAGS=
+NDK_BUILD_EXTRA_ARGS=
 if which nproc >/dev/null
 then
     FF_MAKEFLAGS=-j`nproc`
@@ -54,17 +55,17 @@ do_sub_cmd () {
 
     case $SUB_CMD in
         prof)
-            $ANDROID_NDK/ndk-build $FF_MAKEFLAGS
+            $ANDROID_NDK/ndk-build $FF_MAKEFLAGS $NDK_BUILD_EXTRA_ARGS
         ;;
         clean)
-            $ANDROID_NDK/ndk-build clean
+            $ANDROID_NDK/ndk-build clean $NDK_BUILD_EXTRA_ARGS
         ;;
         rebuild)
-            $ANDROID_NDK/ndk-build clean
-            $ANDROID_NDK/ndk-build $FF_MAKEFLAGS
+            $ANDROID_NDK/ndk-build clean $NDK_BUILD_EXTRA_ARGS
+            $ANDROID_NDK/ndk-build $FF_MAKEFLAGS $NDK_BUILD_EXTRA_ARGS
         ;;
         *)
-            $ANDROID_NDK/ndk-build $FF_MAKEFLAGS
+            $ANDROID_NDK/ndk-build $FF_MAKEFLAGS $NDK_BUILD_EXTRA_ARGS
         ;;
     esac
 }
@@ -78,10 +79,17 @@ do_ndk_build () {
             do_sub_cmd $PARAM_SUB_CMD
             cd -
         ;;
-        arm64|x86|x86_64)
-            cd "ijkplayer/ijkplayer-$PARAM_TARGET/src/main/jni"
+        arm64|x86|x86_64|mips)
+            if [ "$PARAM_TARGET" = "mips" ]; then
+                # Reuse the common JNI sources; APP_ABI selects the MIPS ABI.
+                cd "ijkplayer/ijkplayer-armv7a/src/main/jni"
+                NDK_BUILD_EXTRA_ARGS="APP_ABI=mips"
+            else
+                cd "ijkplayer/ijkplayer-$PARAM_TARGET/src/main/jni"
+            fi
             if [ "$PARAM_SUB_CMD" = 'prof' ]; then PARAM_SUB_CMD=''; fi
             do_sub_cmd $PARAM_SUB_CMD
+            NDK_BUILD_EXTRA_ARGS=
             cd -
         ;;
     esac
@@ -92,7 +100,7 @@ case "$REQUEST_TARGET" in
     "")
         do_ndk_build armv7a;
     ;;
-    armv5|armv7a|arm64|x86|x86_64)
+    armv5|armv7a|arm64|x86|x86_64|mips)
         do_ndk_build $REQUEST_TARGET $REQUEST_SUB_CMD;
     ;;
     all32)
@@ -115,7 +123,7 @@ case "$REQUEST_TARGET" in
     ;;
     *)
         echo "Usage:"
-        echo "  compile-ijk.sh armv5|armv7a|arm64|x86|x86_64"
+        echo "  compile-ijk.sh armv5|armv7a|arm64|x86|x86_64|mips"
         echo "  compile-ijk.sh all|all32"
         echo "  compile-ijk.sh all64"
         echo "  compile-ijk.sh clean"
