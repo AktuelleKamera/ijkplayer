@@ -44,8 +44,12 @@ MY_APP_FFMPEG_OUTPUT_PATH := $(realpath $(MY_APP_ANDROID_ROOT)/contrib/build/ffm
 MY_APP_FFMPEG_INCLUDE_PATH := $(realpath $(MY_APP_FFMPEG_OUTPUT_PATH)/include)
 endif
 ifeq ($(TARGET_ARCH_ABI),mips)
-MY_APP_FFMPEG_OUTPUT_PATH := $(realpath $(MY_APP_ANDROID_ROOT)/contrib/build/ffmpeg-mips/output)
-MY_APP_FFMPEG_INCLUDE_PATH := $(realpath $(MY_APP_FFMPEG_OUTPUT_PATH)/include)
+MY_APP_FFMPEG_OUTPUT_PATH := $(LOCAL_PATH)/../../../../../contrib/build/ffmpeg-mips/output
+MY_APP_FFMPEG_INCLUDE_PATH := $(MY_APP_FFMPEG_OUTPUT_PATH)/include
+endif
+ifeq ($(TARGET_ARCH_ABI),mips64)
+MY_APP_FFMPEG_OUTPUT_PATH := $(LOCAL_PATH)/../../../../../contrib/build/ffmpeg-mips64/output
+MY_APP_FFMPEG_INCLUDE_PATH := $(MY_APP_FFMPEG_OUTPUT_PATH)/include
 endif
 
 include $(call all-subdir-makefiles)

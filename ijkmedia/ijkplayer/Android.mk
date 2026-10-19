@@ -26,12 +26,13 @@ include $(CLEAR_VARS)
 ifeq ($(TARGET_ARCH_ABI),armeabi-v7a)
 LOCAL_CFLAGS += -mfloat-abi=soft
 endif
-LOCAL_CFLAGS += -std=c99
-LOCAL_LDLIBS += -llog
+LOCAL_CONLYFLAGS += -std=c99
 ifneq ($(filter android-3 android-4 android-5 android-8,$(APP_PLATFORM)),)
 LOCAL_CFLAGS += -DIJK_ANDROID_LEGACY_SURFACE=1
+LOCAL_SRC_FILES += ../ijksdl/android/ijksdl_log_compat.c
+# liblog.so is absent on Android 1.5; ijksdl exports the log symbols
 else
-LOCAL_LDLIBS += -landroid
+LOCAL_LDLIBS += -llog -landroid
 endif
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH)

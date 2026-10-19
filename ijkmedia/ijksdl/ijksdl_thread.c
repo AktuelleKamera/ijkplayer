@@ -25,6 +25,9 @@
 #include <errno.h>
 #include <assert.h>
 #include <unistd.h>
+#ifdef __ANDROID__
+#include <sys/prctl.h>
+#endif
 #include "ijksdl_inc_internal.h"
 #include "ijksdl_thread.h"
 #ifdef __ANDROID__
@@ -37,7 +40,11 @@ static void *SDL_RunThread(void *data)
 {
     SDL_Thread *thread = data;
     ALOGI("SDL_RunThread: [%d] %s\n", (int)gettid(), thread->name);
-#if !defined(IJK_ANDROID_LEGACY_SURFACE)
+#if defined(IJK_ANDROID_LEGACY_SURFACE)
+    /* pthread_setname_np is missing from the API 8 bionic; the kernel
+     * interface works everywhere and sets /proc/.../comm identically. */
+    prctl(PR_SET_NAME, thread->name);
+#elif !defined(__APPLE__)
     pthread_setname_np(pthread_self(), thread->name);
 #endif
     thread->retval = thread->func(thread->data);

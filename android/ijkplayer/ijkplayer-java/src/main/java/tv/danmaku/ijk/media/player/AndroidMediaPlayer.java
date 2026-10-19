@@ -284,7 +284,18 @@ public class AndroidMediaPlayer extends AbstractMediaPlayer {
 
     @Override
     public int getAudioSessionId() {
-        return mInternalMediaPlayer.getAudioSessionId();
+        // MediaPlayer#getAudioSessionId exists only since API 9; calling it
+        // directly makes Dalvik reject this whole class on Android 2.1 and
+        // below, so resolve it reflectively instead.
+        try {
+            Object result = MediaPlayer.class.getMethod("getAudioSessionId")
+                    .invoke(mInternalMediaPlayer);
+            if (result instanceof Integer)
+                return ((Integer) result).intValue();
+        } catch (Exception e) {
+            // fall through: session id is optional on old platforms
+        }
+        return 0;
     }
 
     @Override

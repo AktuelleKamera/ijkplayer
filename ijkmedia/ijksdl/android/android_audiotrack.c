@@ -78,6 +78,19 @@ static int find_android_channel(int sdl_channel)
     return CHANNEL_OUT_INVALID;
 }
 
+static int audiotrack_adjust_channel_config(int channel_config)
+{
+    /* Donut (API<=4) AudioTrack only recognises the old
+     * AudioFormat.CHANNEL_CONFIGURATION_* values (MONO=2, STEREO=3);
+     * Eclair+ accepts the CHANNEL_OUT_* bitmask as well. */
+    if (channel_config == CHANNEL_OUT_MONO ||
+            channel_config == CHANNEL_OUT_STEREO) {
+        if (SDL_Android_GetApiLevel() < 5)
+            return channel_config == CHANNEL_OUT_MONO ? 2 : 3;
+    }
+    return channel_config;
+}
+
 static SDL_AudioFormat find_sdl_format(int android_format)
 {
     for (int i = 0; i < NELEM(g_audio_format_map); ++i) {
@@ -149,9 +162,11 @@ SDL_Android_AudioTrack *SDL_Android_AudioTrack_new_from_spec(JNIEnv *env, SDL_An
 
     switch (spec->channel_config) {
     case CHANNEL_OUT_MONO:
+    case 2: /* AudioFormat.CHANNEL_CONFIGURATION_MONO (Donut) */
         ALOGI("SDL_Android_AudioTrack: %s", "CHANNEL_OUT_MONO");
         break;
     case CHANNEL_OUT_STEREO:
+    case 3: /* AudioFormat.CHANNEL_CONFIGURATION_STEREO (Donut) */
         ALOGI("SDL_Android_AudioTrack: %s", "CHANNEL_OUT_STEREO");
         break;
     default:
@@ -200,6 +215,11 @@ SDL_Android_AudioTrack *SDL_Android_AudioTrack_new_from_spec(JNIEnv *env, SDL_An
         atrack->spec.sample_rate_in_hz /= 2;   
     }
 
+    ALOGI("%s: getMinBufferSize(rate=%d, channelConfig=0x%x, format=%d)\n",
+          __func__,
+          atrack->spec.sample_rate_in_hz,
+          atrack->spec.channel_config,
+          atrack->spec.audio_format);
     int min_buffer_size = J4AC_AudioTrack__getMinBufferSize(env,
         atrack->spec.sample_rate_in_hz,
         atrack->spec.channel_config,
@@ -248,7 +268,8 @@ SDL_Android_AudioTrack *SDL_Android_AudioTrack_new_from_sdl_spec(JNIEnv *env, co
 
     SDL_Android_AudioTrack_get_default_spec(&atrack_spec);
     atrack_spec.sample_rate_in_hz = sdl_spec->freq;
-    atrack_spec.channel_config = find_android_channel(sdl_spec->channels);
+    atrack_spec.channel_config = audiotrack_adjust_channel_config(
+            find_android_channel(sdl_spec->channels));
     atrack_spec.audio_format = find_android_format(sdl_spec->format);
     atrack_spec.buffer_size_in_bytes = sdl_spec->size;
 

@@ -84,9 +84,11 @@ static SDL_Aout *func_open_audio_output(IJKFF_Pipeline *pipeline, FFPlayer *ffp)
     SDL_Aout *aout = NULL;
     if (ffp->opensles) {
         aout = SDL_AoutAndroid_CreateForOpenSLES();
-    } else {
-        aout = SDL_AoutAndroid_CreateForAudioTrack();
+        if (!aout)
+            ALOGW("ffpipeline_android: OpenSL ES unavailable, fallback to AudioTrack\n");
     }
+    if (!aout)
+        aout = SDL_AoutAndroid_CreateForAudioTrack();
     if (aout)
         SDL_AoutSetStereoVolume(aout, pipeline->opaque->left_volume, pipeline->opaque->right_volume);
     return aout;

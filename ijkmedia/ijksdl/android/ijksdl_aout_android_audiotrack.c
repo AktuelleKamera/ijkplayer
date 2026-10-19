@@ -81,7 +81,13 @@ static int aout_thread_n(JNIEnv *env, SDL_Aout *aout)
     assert(atrack);
     assert(buffer);
 
-    SDL_SetThreadPriority(SDL_THREAD_PRIORITY_HIGH);
+    /* HIGH keeps audio glitch-free on capable hardware, but on Donut-era
+     * single-core ROMs it can starve the UI thread into ANR. There the
+     * aout thread runs at normal priority instead. */
+    if (SDL_Android_GetApiLevel() >= 5)
+        SDL_SetThreadPriority(SDL_THREAD_PRIORITY_HIGH);
+    else
+        SDL_SetThreadPriority(SDL_THREAD_PRIORITY_NORMAL);
 
     if (!opaque->abort_request && !opaque->pause_on)
         SDL_Android_AudioTrack_play(env, atrack);

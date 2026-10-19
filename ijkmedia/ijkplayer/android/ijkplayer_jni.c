@@ -744,6 +744,8 @@ static void
 IjkMediaPlayer_native_init(JNIEnv *env)
 {
     MPTRACE("%s\n", __func__);
+    ijkmp_global_init();
+    ijkmp_global_set_inject_callback(inject_callback);
 }
 
 static void
@@ -1197,9 +1199,6 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved)
     // FindClass returns LocalReference
     IJK_FIND_JAVA_CLASS(env, g_clazz.clazz, JNI_CLASS_IJKPLAYER);
     (*env)->RegisterNatives(env, g_clazz.clazz, g_methods, NELEM(g_methods) );
-
-    ijkmp_global_init();
-    ijkmp_global_set_inject_callback(inject_callback);
 
     FFmpegApi_global_init(env);
 

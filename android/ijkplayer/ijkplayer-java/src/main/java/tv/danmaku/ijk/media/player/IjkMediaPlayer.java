@@ -455,9 +455,19 @@ public final class IjkMediaPlayer extends AbstractMediaPlayer {
             }
             _setDataSourceFd(native_fd);
         } else {
+            // ParcelFileDescriptor#dup(FileDescriptor) needs HONEYCOMB_MR1.
+            // Keep it in a nested class so old Dalvik never verifies this
+            // reference while loading IjkMediaPlayer itself.
+            _HoneycombMr1Compat.setDataSourceFd(this, fd);
+        }
+    }
+
+    private static class _HoneycombMr1Compat {
+        private static void setDataSourceFd(IjkMediaPlayer mp, FileDescriptor fd)
+                throws IOException, IllegalArgumentException, IllegalStateException {
             ParcelFileDescriptor pfd = ParcelFileDescriptor.dup(fd);
             try {
-                _setDataSourceFd(pfd.getFd());
+                mp._setDataSourceFd(pfd.getFd());
             } finally {
                 pfd.close();
             }

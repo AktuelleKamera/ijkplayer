@@ -92,7 +92,7 @@
 #ifdef isnan
 #undef isnan
 #endif
-#define isnan(x) (isnan((double)(x)) || isnanf((float)(x)))
+#define isnan(x) __builtin_isnan((double)(x))
 #endif
 
 #if defined(__ANDROID__)
@@ -2339,6 +2339,9 @@ static int video_thread(void *arg)
 {
     FFPlayer *ffp = (FFPlayer *)arg;
     int       ret = 0;
+    /* Software H.264 decode saturates a single core on pre-2.3 hardware;
+     * drop below the UI thread so the interface stays interactive. */
+    SDL_SetThreadPriority(SDL_THREAD_PRIORITY_LOW);
 
     if (ffp->node_vdec) {
         ret = ffpipenode_run_sync(ffp->node_vdec);
@@ -3062,6 +3065,9 @@ static int read_thread(void *arg)
 {
     FFPlayer *ffp = arg;
     VideoState *is = ffp->is;
+    /* Demuxing competes with the UI on single-core devices; keep it low so
+     * the interface (and the back key) stay responsive. */
+    SDL_SetThreadPriority(SDL_THREAD_PRIORITY_LOW);
     AVFormatContext *ic = NULL;
     int err, i, ret __unused;
     int st_index[AVMEDIA_TYPE_NB];
@@ -3762,6 +3768,7 @@ static int video_refresh_thread(void *arg)
 {
     FFPlayer *ffp = arg;
     VideoState *is = ffp->is;
+    SDL_SetThreadPriority(SDL_THREAD_PRIORITY_LOW);
     double remaining_time = 0.0;
     while (!is->abort_request) {
         if (remaining_time > 0.0)
@@ -3872,7 +3879,9 @@ void ffp_global_init()
 
     ALOGD("ijkmediaplayer version : %s", ijkmp_version());
     /* register all codecs, demux and protocols */
-    avcodec_register_all();
+    /* FFmpeg's avcodec_register_all() uses pthread_once and deadlocks on the
+     * Android 2.1 Bionic pthread implementation. Codec registration is
+     * already emitted by this build's linker constructors, so skip it. */
 #if CONFIG_AVDEVICE
     avdevice_register_all();
 #endif

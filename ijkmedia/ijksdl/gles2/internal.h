@@ -101,4 +101,10 @@ IJK_GLES2_Renderer *IJK_GLES2_Renderer_create_rgb565();
 IJK_GLES2_Renderer *IJK_GLES2_Renderer_create_rgb888();
 IJK_GLES2_Renderer *IJK_GLES2_Renderer_create_rgbx8888();
 
+#if defined(__ANDROID__) && defined(IJK_ANDROID_LEGACY_SURFACE)
+/* Route every EGL and GL call through the runtime loader; keep this include
+ * last so the declarations above keep their real names. */
+#include "../android/ijksdl_egl_gl_dynamic.h"
+#endif
+
 #endif

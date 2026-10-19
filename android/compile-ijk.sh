@@ -25,7 +25,7 @@ fi
 REQUEST_TARGET=$1
 REQUEST_SUB_CMD=$2
 ACT_ABI_32="armv5 armv7a x86 mips"
-ACT_ABI_64="armv5 armv7a arm64 x86 x86_64 mips"
+ACT_ABI_64="armv5 armv7a arm64 x86 x86_64 mips mips64"
 ACT_ABI_ALL=$ACT_ABI_64
 UNAME_S=$(uname -s)
 
@@ -86,11 +86,15 @@ do_ndk_build () {
             do_sub_cmd $PARAM_SUB_CMD
             cd -
         ;;
-        arm64|x86|x86_64|mips)
+        arm64|x86|x86_64|mips|mips64)
             if [ "$PARAM_TARGET" = "mips" ]; then
                 # Reuse the common JNI sources; APP_ABI selects the MIPS ABI.
                 cd "ijkplayer/ijkplayer-armv7a/src/main/jni"
                 NDK_BUILD_EXTRA_ARGS="APP_ABI=mips"
+            elif [ "$PARAM_TARGET" = "mips64" ]; then
+                # 同理复用通用 JNI 源；mips64 需要 android-21 平台
+                cd "ijkplayer/ijkplayer-armv7a/src/main/jni"
+                NDK_BUILD_EXTRA_ARGS="APP_ABI=mips64 APP_PLATFORM=android-21"
             else
                 cd "ijkplayer/ijkplayer-$PARAM_TARGET/src/main/jni"
             fi
@@ -107,7 +111,7 @@ case "$REQUEST_TARGET" in
     "")
         do_ndk_build armv7a;
     ;;
-    armv5|armv7a|arm64|x86|x86_64|mips)
+    armv5|armv7a|arm64|x86|x86_64|mips|mips64)
         do_ndk_build $REQUEST_TARGET $REQUEST_SUB_CMD;
     ;;
     all32)
@@ -130,7 +134,7 @@ case "$REQUEST_TARGET" in
     ;;
     *)
         echo "Usage:"
-        echo "  compile-ijk.sh armv5|armv7a|arm64|x86|x86_64|mips"
+        echo "  compile-ijk.sh armv5|armv7a|arm64|x86|x86_64|mips|mips64"
         echo "  compile-ijk.sh all|all32"
         echo "  compile-ijk.sh all64"
         echo "  compile-ijk.sh clean"

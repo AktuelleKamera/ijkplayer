@@ -107,8 +107,9 @@ elif [ "$FF_ARCH" = "armv5" ]; then
     FF_CFG_FLAGS="$FF_CFG_FLAGS --arch=arm"
 
     if [ "$IJK_ARMV6_DEFAULT" = "1" ]; then
-        # Keep the armeabi compiler defaults for the ARMv6/VFP variant.
-        FF_EXTRA_CFLAGS="$FF_EXTRA_CFLAGS"
+        # [BiliClassic] app armeabi = ARMv6 + VFP (v6vfp variant). VFP implies
+        # ARMv6 or newer, so target armv6 and enable VFP for the software decoder.
+        FF_EXTRA_CFLAGS="$FF_EXTRA_CFLAGS -march=armv6 -mtune=arm1136jf-s -mfpu=vfp -mfloat-abi=softfp"
     else
         FF_EXTRA_CFLAGS="$FF_EXTRA_CFLAGS -march=armv5te -mtune=arm9tdmi -msoft-float"
     fi
@@ -185,9 +186,43 @@ elif [ "$FF_ARCH" = "mips" ]; then
 
     FF_ASSEMBLER_SUB_DIRS="mips"
 
+elif [ "$FF_ARCH" = "mips64" ]; then
+    FF_ANDROID_PLATFORM=android-21
+
+    FF_BUILD_NAME=ffmpeg-mips64
+    FF_BUILD_NAME_OPENSSL=openssl-mips64
+    FF_BUILD_NAME_LIBSOXR=libsoxr-mips64
+    FF_SOURCE=$FF_BUILD_ROOT/$FF_BUILD_NAME
+
+    FF_CROSS_PREFIX=mips64el-linux-android
+    FF_TOOLCHAIN_NAME=${FF_CROSS_PREFIX}-${FF_GCC_64_VER}
+
+    # --disable-inline-asm：libavutil/mips/intreadwrite.h 里 AV_RN32 用了 lwl/lwr，
+    #   这两个指令在 mips r6 已被删除（HAVE_MIPS64R6 探测在 NDK 工具链上无法置 1），
+    #   关掉内联汇编即退回纯 C 实现。该 ABI 无实际设备，性能无所谓。
+    FF_CFG_FLAGS="$FF_CFG_FLAGS --arch=mips64 --cpu=mips64r6 --disable-inline-asm"
+
+    FF_EXTRA_CFLAGS="$FF_EXTRA_CFLAGS"
+    FF_EXTRA_LDFLAGS="$FF_EXTRA_LDFLAGS"
+
+    FF_ASSEMBLER_SUB_DIRS=""
+
 else
     echo "unknown architecture $FF_ARCH";
     exit 1
+fi
+
+# [实验] 仅用于测量 gc-sections 的效果
+if [ "$IJK_TEST_GC" = "1" ]; then
+    FF_EXTRA_LDFLAGS="$FF_EXTRA_LDFLAGS -Wl,--gc-sections"
+    echo "[IJK_TEST_GC] LDFLAGS=$FF_EXTRA_LDFLAGS"
+fi
+
+# [实验] 隐藏可见性 + 导出清单 + gc-sections（需要全量重编）
+if [ "$IJK_TEST_VIS" = "1" ]; then
+    FF_EXTRA_CFLAGS="$FF_EXTRA_CFLAGS -ffunction-sections -fdata-sections"
+    FF_EXTRA_LDFLAGS="$FF_EXTRA_LDFLAGS -Wl,--gc-sections -Wl,--version-script=$FF_BUILD_ROOT/tools/ijklite-exports.map"
+    echo "[IJK_TEST_VIS] EXTRA_CFLAGS=$FF_EXTRA_CFLAGS"
 fi
 
 if [ ! -d $FF_SOURCE ]; then
@@ -314,6 +349,10 @@ FF_CFG_FLAGS="$FF_CFG_FLAGS --disable-autodetect"
 
 if [ "$FF_ARCH" = "x86" ] || [ "$FF_ARCH" = "x86_64" ]; then
     FF_CFG_FLAGS="$FF_CFG_FLAGS --disable-asm"
+elif [ "$FF_ARCH" = "mips64" ]; then
+    # mips64: 工具链是 r6，而 ffmpeg 的部分 MIPS 内联汇编用了 r6 删除的 lwl/lwr，
+    # 且 HAVE_MIPS64R6 在 NDK 工具链上探测不通过，只能整体关掉汇编
+    FF_CFG_FLAGS="$FF_CFG_FLAGS --disable-asm --disable-inline-asm"
 else
     # Optimization options (experts only):
     FF_CFG_FLAGS="$FF_CFG_FLAGS --enable-asm"
@@ -328,7 +367,8 @@ case "$FF_BUILD_OPT" in
     ;;
     *)
         FF_CFG_FLAGS="$FF_CFG_FLAGS --enable-optimizations"
-        FF_CFG_FLAGS="$FF_CFG_FLAGS --enable-debug"
+        # [slim] release 不打调试信息: --enable-debug 会加 -g，.so 里会多出 ~10MB 调试段
+        # FF_CFG_FLAGS="$FF_CFG_FLAGS --enable-debug"
         FF_CFG_FLAGS="$FF_CFG_FLAGS --enable-small"
     ;;
 esac

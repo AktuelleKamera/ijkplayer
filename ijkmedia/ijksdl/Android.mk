@@ -20,7 +20,7 @@
 LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
-LOCAL_CFLAGS += -std=c99
+LOCAL_CONLYFLAGS += -std=c99
 
 # Android 2.1/2.2 do not expose ANativeWindow, OpenSL ES, or libandroid.
 # Use the private Surface backend there; newer API levels keep the normal path.
@@ -30,9 +30,11 @@ IJK_ANDROID_LEGACY_SURFACE := 1
 LOCAL_CFLAGS += -DIJK_ANDROID_LEGACY_SURFACE=1
 endif
 
-LOCAL_LDLIBS += -llog
-ifeq ($(IJK_ANDROID_LEGACY_SURFACE),0)
-LOCAL_LDLIBS += -landroid -lOpenSLES -lEGL -lGLESv2
+ifeq ($(IJK_ANDROID_LEGACY_SURFACE),1)
+# Android 1.5 lacks liblog.so; ijksdl_log_compat.c defines the symbols
+# locally instead of carrying a liblog dependency.
+else
+LOCAL_LDLIBS += -llog -landroid -lOpenSLES -lEGL -lGLESv2
 endif
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH)
@@ -82,6 +84,23 @@ LOCAL_SRC_FILES += android/ijksdl_codec_android_mediaformat_java.c
 LOCAL_SRC_FILES += android/ijksdl_codec_android_mediaformat.c
 ifeq ($(IJK_ANDROID_LEGACY_SURFACE),1)
 LOCAL_SRC_FILES += android/ijksdl_vout_android_legacy.c
+LOCAL_SRC_FILES += android/ijksdl_vout_overlay_android_mediacodec.c
+LOCAL_SRC_FILES += android/ijksdl_aout_android_opensles.c
+LOCAL_SRC_FILES += android/ijksdl_opensles_dynamic.c
+LOCAL_SRC_FILES += android/ijksdl_egl_gl_dynamic.c
+LOCAL_SRC_FILES += android/ijksdl_log_compat.c
+LOCAL_SRC_FILES += ijksdl_egl.c
+LOCAL_SRC_FILES += gles2/color.c
+LOCAL_SRC_FILES += gles2/common.c
+LOCAL_SRC_FILES += gles2/renderer.c
+LOCAL_SRC_FILES += gles2/renderer_rgb.c
+LOCAL_SRC_FILES += gles2/renderer_yuv420p.c
+LOCAL_SRC_FILES += gles2/renderer_yuv444p10le.c
+LOCAL_SRC_FILES += gles2/shader.c
+LOCAL_SRC_FILES += gles2/fsh/rgb.fsh.c
+LOCAL_SRC_FILES += gles2/fsh/yuv420p.fsh.c
+LOCAL_SRC_FILES += gles2/fsh/yuv444p10le.fsh.c
+LOCAL_SRC_FILES += gles2/vsh/mvp.vsh.c
 else
 LOCAL_SRC_FILES += android/android_nativewindow.c
 LOCAL_SRC_FILES += android/ijksdl_aout_android_opensles.c
