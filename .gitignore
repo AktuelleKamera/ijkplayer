@@ -41,3 +41,14 @@ xcuserdata
 xcshareddata
 *.xccheckout
 
+# IJK build leftovers
+android/rem
+android/contrib/libxml2-*
+android/ijkplayer/*/src/main/jni-copy-backup/
+android/ijkplayer/*/src/main/libs-*/
+NUL
+_NUL
+*.orig
+*.log
+
+
