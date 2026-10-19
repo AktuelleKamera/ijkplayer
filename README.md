@@ -7,6 +7,13 @@
 
 Video player based on [ffplay](http://ffmpeg.org)
 
+### BiliClassic fork
+- used by BiliClassic, targets Android 1.5+ (API 3+)
+- FFmpeg 4.0
+- added: ARMv5/ARMv6 noVFP software decoding, DASH, dynamic OpenSLES/EGL loading, Android 2.x compatibility
+- ABI: armeabi (ARMv5/ARMv6+VFP), armeabi-v7a, arm64-v8a, x86, x86_64, mips, mips64, riscv64
+- riscv64: Android 15+ (API 35), NDK r27d, generic C FFmpeg (no asm)
+
 ### Download
 
 - Android:
@@ -49,6 +56,10 @@ dependencies {
 - [HomeBrew](http://brew.sh)
  - ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
  - brew install git
+- BiliClassic fork
+ - Windows 7 x64
+ - Git for Windows (bash)
+ - NDK r10e for legacy ABIs, NDK r27d for riscv64
 
 ### Latest Changes
 - [NEWS.md](NEWS.md)
@@ -58,8 +69,8 @@ dependencies {
  - remove rarely used ffmpeg components to reduce binary size [config/module-lite.sh](config/module-lite.sh)
  - workaround for some buggy online video.
 - Android
- - platform: API 9~23
- - cpu: ARMv7a, ARM64v8a, x86 (ARMv5 is not tested on real devices)
+ - platform: API 3+ (legacy builds), API 35 for riscv64
+ - cpu: ARMv5, ARMv6 (VFP/noVFP), ARMv7a, ARM64v8a, x86, x86_64, MIPS, riscv64
  - api: [MediaPlayer-like](android/ijkplayer/ijkplayer-java/src/main/java/tv/danmaku/ijk/media/player/IMediaPlayer.java)
  - video-output: NativeWindow, OpenGL ES 2.0
  - audio-output: AudioTrack, OpenSL ES
@@ -75,8 +86,7 @@ dependencies {
  - alternative-backend: AVFoundation.Framework.AVPlayer, MediaPlayer.Framework.MPMoviePlayerControlelr (obselete since iOS 8)
 
 ### NOT-ON-PLAN
-- obsolete platforms (Android: API-8 and below; iOS: pre-6.0)
-- obsolete cpu: ARMv5, ARMv6, MIPS (I don't even have these types of devices…)
+- obsolete platforms (iOS: pre-6.0)
 - native subtitle render
 - avfilter support
 
@@ -135,9 +145,9 @@ sudo dpkg-reconfigure dash
 
 ### Build Android
 ```
-git clone https://github.com/Bilibili/ijkplayer.git ijkplayer-android
+git clone https://github.com/AktuelleKamera/ijkplayer.git ijkplayer-android
 cd ijkplayer-android
-git checkout -B latest k0.8.8
+git checkout master
 
 ./init-android.sh
 
@@ -186,6 +196,7 @@ cd ..
 
 ```
 
+- riscv64 (Android 15+): NDK r27d, FFmpeg 4.0 with `--arch=riscv64 --disable-asm --disable-inline-asm`, module `android/ijkplayer/ijkplayer-riscv64`.
 
 ### Build iOS
 ```
@@ -231,7 +242,7 @@ cd ios
 
 ### Support (支持) ###
 - Please do not send e-mail to me. Public technical discussion on github is preferred.
-- 请尽量在 github 上公开讨论[技术问题](https://github.com/bilibili/ijkplayer/issues)，不要以邮件方式私下询问，恕不一一回复。
+- 请尽量在github上公开讨论[技术问题](https://github.com/bilibili/ijkplayer/issues)，不要以邮件方式私下询问，恕不一一回复。
 
 
 ### License
