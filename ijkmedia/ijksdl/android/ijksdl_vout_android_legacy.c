@@ -250,65 +250,100 @@ static void legacy_blit(SDL_VoutOverlay *overlay, int dst_w, int dst_h,
         uint32_t dst_pitch_units, bool pitch_is_bytes, uint32_t dst_format,
         uint8_t *dst)
 {
-    const int width = overlay->w < dst_w ? overlay->w : dst_w;
-    const int height = overlay->h < dst_h ? overlay->h : dst_h;
+    if (!overlay || !dst || dst_w <= 0 || dst_h <= 0 ||
+            overlay->w <= 0 || overlay->h <= 0)
+        return;
+
+    const int src_w = overlay->w;
+    const int src_h = overlay->h;
     const int dst_bpp = dst_format == 4 ? 2 : (dst_format == 3 ? 3 : 4);
     const int dst_pitch = pitch_is_bytes ? (int)dst_pitch_units
                                          : (int)(dst_pitch_units * dst_bpp);
     const uint8_t *src = overlay->pixels[0];
     const int src_pitch = overlay->pitches[0];
 
-    if (overlay->format == SDL_FCC_RV32 && (dst_format == 1 || dst_format == 2)) {
-        /* identical byte order: straight row copy */
-        for (int y = 0; y < height; ++y)
-            memcpy(dst + y * dst_pitch, src + y * src_pitch, width * 4);
-        return;
+    if (dst_w == src_w && dst_h == src_h) {
+        if (overlay->format == SDL_FCC_RV32 && (dst_format == 1 || dst_format == 2)) {
+            /* identical byte order: straight row copy */
+            for (int y = 0; y < dst_h; ++y)
+                memcpy(dst + y * dst_pitch, src + y * src_pitch, dst_w * 4);
+            return;
+        }
+        if (overlay->format == SDL_FCC_RV16 && dst_format == 4) {
+            for (int y = 0; y < dst_h; ++y)
+                memcpy(dst + y * dst_pitch, src + y * src_pitch, dst_w * 2);
+            return;
+        }
     }
 
-    if (overlay->format == SDL_FCC_RV16 && dst_format == 4) {
-        for (int y = 0; y < height; ++y)
-            memcpy(dst + y * dst_pitch, src + y * src_pitch, width * 2);
-        return;
+    /* Surface is larger than the decoded frame (aspect-fit view): scale into
+     * the whole surface instead of copying only the top-left video-sized box.
+     * Old Froyo SurfaceView cannot scale the surface layer itself. */
+    static int s_scale_logged = 0;
+    if (!s_scale_logged) {
+        s_scale_logged = 1;
+        ALOGD("legacy_blit: scale %dx%d -> %dx%d", src_w, src_h, dst_w, dst_h);
     }
+    int step_x = (int)(((int64_t)src_w << 16) / dst_w);
+    int step_y = (int)(((int64_t)src_h << 16) / dst_h);
+    int sy = 0;
 
-    for (int y = 0; y < height; ++y) {
-        const uint8_t *src_row = src + y * src_pitch;
-        uint8_t *dst_row = dst + y * dst_pitch;
-        for (int x = 0; x < width; ++x) {
-            uint8_t b, g, r;
+    for (int y = 0; y < dst_h; ++y) {
+        int syi = sy >> 16;
+        if (syi >= src_h) syi = src_h - 1;
+        const uint8_t *src_row = src + (size_t)syi * src_pitch;
+        uint8_t *dst_row = dst + (size_t)y * dst_pitch;
+        int sx = 0;
+        for (int x = 0; x < dst_w; ++x) {
+            int sxi = sx >> 16;
+            if (sxi >= src_w) sxi = src_w - 1;
+            if (overlay->format == SDL_FCC_RV32 && (dst_format == 1 || dst_format == 2)) {
+                ((uint32_t *)dst_row)[x] = ((const uint32_t *)src_row)[sxi];
+                sx += step_x;
+                continue;
+            }
+            if (overlay->format == SDL_FCC_RV16 && dst_format == 4) {
+                ((uint16_t *)dst_row)[x] = ((const uint16_t *)src_row)[sxi];
+                sx += step_x;
+                continue;
+            }
+            uint8_t r, g, b;
             if (overlay->format == SDL_FCC_RV16) {
-                const uint16_t pixel = ((const uint16_t *)src_row)[x];
+                const uint16_t pixel = ((const uint16_t *)src_row)[sxi];
                 r = (uint8_t)(((pixel >> 11) & 0x1f) << 3);
                 g = (uint8_t)(((pixel >> 5) & 0x3f) << 2);
                 b = (uint8_t)((pixel & 0x1f) << 3);
             } else {
-                r = src_row[x * 4 + 0];
-                g = src_row[x * 4 + 1];
-                b = src_row[x * 4 + 2];
+                const uint8_t *s = src_row + (size_t)sxi * 4;
+                r = s[0];
+                g = s[1];
+                b = s[2];
             }
             if (dst_format == 4) {
-                uint16_t *pixel = (uint16_t *)(dst_row + x * 2);
+                uint16_t *pixel = (uint16_t *)(dst_row + (size_t)x * 2);
                 *pixel = (uint16_t)(((r & 0xf8) << 8) |
                         ((g & 0xfc) << 3) | (b >> 3));
             } else if (dst_format == 3) {
-                uint8_t *pixel = dst_row + x * 3;
+                uint8_t *pixel = dst_row + (size_t)x * 3;
                 pixel[0] = r;
                 pixel[1] = g;
                 pixel[2] = b;
             } else if (dst_format == 5) {
-                uint8_t *pixel = dst_row + x * 4;
+                uint8_t *pixel = dst_row + (size_t)x * 4;
                 pixel[0] = b;
                 pixel[1] = g;
                 pixel[2] = r;
                 pixel[3] = 0xff;
             } else {
-                uint8_t *pixel = dst_row + x * 4;
+                uint8_t *pixel = dst_row + (size_t)x * 4;
                 pixel[0] = r;
                 pixel[1] = g;
                 pixel[2] = b;
                 pixel[3] = dst_format == 1 ? 0xff : 0;
             }
+            sx += step_x;
         }
+        sy += step_y;
     }
 }
 

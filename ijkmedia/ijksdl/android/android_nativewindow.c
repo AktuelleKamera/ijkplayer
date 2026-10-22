@@ -25,6 +25,7 @@
 #include "android_nativewindow.h"
 
 #include <assert.h>
+#include <stdint.h>
 #include <android/native_window.h>
 #include "../ijksdl_vout.h"
 #include "../ijksdl_vout_internal.h"
@@ -36,11 +37,136 @@
 #define SDLTRACE(...)
 #endif
 
+/*
+ * Software decode normally asks the surface to take the video's own size, so
+ * a 360p stream on an 800x480 screen stays in the top-left corner.  The app
+ * asks for an aspect-fit surface; when that surface is larger than the decoded
+ * frame, scale the frame into it instead of shrinking the surface back.
+ *
+ * Nearest-neighbour is intentional: it is cheap enough for 360p on the old
+ * ARM targets and only runs on the upscale path.
+ */
+static void android_scale_plane_nearest(uint8_t *dst, int dst_stride,
+                                        int dst_w, int dst_h,
+                                        const uint8_t *src, int src_stride,
+                                        int src_w, int src_h)
+{
+    if (!dst || !src || dst_w <= 0 || dst_h <= 0 || src_w <= 0 || src_h <= 0)
+        return;
+
+    int step_x = (int)(((int64_t)src_w << 16) / dst_w);
+    int step_y = (int)(((int64_t)src_h << 16) / dst_h);
+    int sy = 0;
+
+    for (int y = 0; y < dst_h; ++y) {
+        int syi = sy >> 16;
+        if (syi >= src_h) syi = src_h - 1;
+        const uint8_t *src_row = src + (size_t)syi * src_stride;
+        uint8_t *dst_row = dst + (size_t)y * dst_stride;
+        int sx = 0;
+        for (int x = 0; x < dst_w; ++x) {
+            int sxi = sx >> 16;
+            if (sxi >= src_w) sxi = src_w - 1;
+            dst_row[x] = src_row[sxi];
+            sx += step_x;
+        }
+        sy += step_y;
+    }
+}
+
+static int android_render_yv12_on_yv12_scaled(ANativeWindow_Buffer *out_buffer, const SDL_VoutOverlay *overlay)
+{
+    int dst_w = out_buffer->width;
+    int dst_h = out_buffer->height;
+    int src_w = overlay->w;
+    int src_h = overlay->h;
+
+    int dst_y_stride = out_buffer->stride;
+    int dst_c_stride = IJKALIGN(out_buffer->stride / 2, 16);
+    int dst_y_size = dst_y_stride * dst_h;
+    int dst_c_size = dst_c_stride * (dst_h / 2);
+
+    uint8_t *dst[3] = {
+        out_buffer->bits,
+        out_buffer->bits + dst_y_size,
+        out_buffer->bits + dst_y_size + dst_c_size,
+    };
+    int dst_strides[3] = { dst_y_stride, dst_c_stride, dst_c_stride };
+    int dst_w_array[3] = { dst_w, dst_w / 2, dst_w / 2 };
+    int dst_h_array[3] = { dst_h, dst_h / 2, dst_h / 2 };
+    int src_w_array[3] = { src_w, src_w / 2, src_w / 2 };
+    int src_h_array[3] = { src_h, src_h / 2, src_h / 2 };
+
+    for (int i = 0; i < 3; ++i) {
+        android_scale_plane_nearest(dst[i], dst_strides[i], dst_w_array[i], dst_h_array[i],
+                                    overlay->pixels[i], overlay->pitches[i],
+                                    src_w_array[i], src_h_array[i]);
+    }
+    return 0;
+}
+
+static int android_render_rgb_on_rgb_scaled(ANativeWindow_Buffer *out_buffer,
+                                            const SDL_VoutOverlay *overlay, int bpp)
+{
+    int bytes = bpp / 8;
+    int dst_w = out_buffer->width;
+    int dst_h = out_buffer->height;
+    int src_w = overlay->w;
+    int src_h = overlay->h;
+    int dst_stride = out_buffer->stride * bytes;
+    int src_stride = overlay->pitches[0];
+    uint8_t *dst_base = out_buffer->bits;
+    const uint8_t *src_base = overlay->pixels[0];
+
+    int step_x = (int)(((int64_t)src_w << 16) / dst_w);
+    int step_y = (int)(((int64_t)src_h << 16) / dst_h);
+    int sy = 0;
+
+    for (int y = 0; y < dst_h; ++y) {
+        int syi = sy >> 16;
+        if (syi >= src_h) syi = src_h - 1;
+        uint8_t *dst_row = dst_base + (size_t)y * dst_stride;
+        const uint8_t *src_row = src_base + (size_t)syi * src_stride;
+        int sx = 0;
+        if (bytes == 4) {
+            uint32_t *dst_pixels = (uint32_t *)dst_row;
+            const uint32_t *src_pixels = (const uint32_t *)src_row;
+            for (int x = 0; x < dst_w; ++x) {
+                int sxi = sx >> 16;
+                if (sxi >= src_w) sxi = src_w - 1;
+                dst_pixels[x] = src_pixels[sxi];
+                sx += step_x;
+            }
+        } else if (bytes == 2) {
+            uint16_t *dst_pixels = (uint16_t *)dst_row;
+            const uint16_t *src_pixels = (const uint16_t *)src_row;
+            for (int x = 0; x < dst_w; ++x) {
+                int sxi = sx >> 16;
+                if (sxi >= src_w) sxi = src_w - 1;
+                dst_pixels[x] = src_pixels[sxi];
+                sx += step_x;
+            }
+        } else {
+            for (int x = 0; x < dst_w; ++x) {
+                int sxi = sx >> 16;
+                if (sxi >= src_w) sxi = src_w - 1;
+                memcpy(dst_row + (size_t)x * bytes, src_row + (size_t)sxi * bytes, bytes);
+                sx += step_x;
+            }
+        }
+        sy += step_y;
+    }
+    return 0;
+}
+
 static int android_render_yv12_on_yv12(ANativeWindow_Buffer *out_buffer, const SDL_VoutOverlay *overlay)
 {
     // SDLTRACE("SDL_VoutAndroid: android_render_yv12_on_yv12(%p)", overlay);
     assert(overlay->format == SDL_FCC_YV12);
     assert(overlay->planes == 3);
+
+    if (out_buffer->width != overlay->w || out_buffer->height != overlay->h)
+        return android_render_yv12_on_yv12_scaled(out_buffer, overlay);
 
     int min_height = IJKMIN(out_buffer->height, overlay->h);
     int dst_y_stride = out_buffer->stride;
@@ -101,6 +227,9 @@ static int android_render_rgb_on_rgb(ANativeWindow_Buffer *out_buffer, const SDL
     // SDLTRACE("SDL_VoutAndroid: android_render_rgb_on_rgb(%p)", overlay);
     assert(overlay->format == SDL_FCC_RV16);
     assert(overlay->planes == 1);
+
+    if (out_buffer->width != overlay->w || out_buffer->height != overlay->h)
+        return android_render_rgb_on_rgb_scaled(out_buffer, overlay, bpp);
 
     int min_height = IJKMIN(out_buffer->height, overlay->h);
     int dst_stride = out_buffer->stride;
@@ -230,10 +359,14 @@ int SDL_Android_NativeWindow_display_l(ANativeWindow *native_window, SDL_VoutOve
 
     AndroidHalFourccDescriptor *voutDesc = native_window_get_desc(curr_format);
     if (!voutDesc || voutDesc->hal_format != overlayDesc->hal_format) {
+        // Keep an already-larger surface (aspect-fit view) instead of shrinking
+        // it to the video size; the render path above scales the frame into it.
+        int target_w = curr_w > buff_w ? curr_w : buff_w;
+        int target_h = curr_h > buff_h ? curr_h : buff_h;
         ALOGD("ANativeWindow_setBuffersGeometry: w=%d, h=%d, f=%.4s(0x%x) => w=%d, h=%d, f=%.4s(0x%x)",
             curr_w, curr_h, (char*) &curr_format, curr_format,
-            buff_w, buff_h, (char*) &overlay->format, overlay->format);
-        retval = ANativeWindow_setBuffersGeometry(native_window, buff_w, buff_h, overlayDesc->hal_format);
+            target_w, target_h, (char*) &overlay->format, overlay->format);
+        retval = ANativeWindow_setBuffersGeometry(native_window, target_w, target_h, overlayDesc->hal_format);
         if (retval < 0) {
             ALOGE("SDL_Android_NativeWindow_display_l: ANativeWindow_setBuffersGeometry: failed %d", retval);
             return retval;
@@ -253,14 +386,22 @@ int SDL_Android_NativeWindow_display_l(ANativeWindow *native_window, SDL_VoutOve
     }
 
     if (out_buffer.width != buff_w || out_buffer.height != buff_h) {
-        ALOGE("unexpected native window buffer (%p)(w:%d, h:%d, fmt:'%.4s'0x%x), expecting (w:%d, h:%d, fmt:'%.4s'0x%x)",
-            native_window,
-            out_buffer.width, out_buffer.height, (char*)&out_buffer.format, out_buffer.format,
-            buff_w, buff_h, (char*)&overlay->format, overlay->format);
-        // TODO: 8 set all black
-        ANativeWindow_unlockAndPost(native_window);
-        ANativeWindow_setBuffersGeometry(native_window, buff_w, buff_h, overlayDesc->hal_format);
-        return -1;
+        // The app made the surface larger than the decoded frame on purpose
+        // (aspect-fit view).  Keep that surface and let the render functions
+        // scale into it; shrinking the geometry back here is what left low
+        // resolution videos stuck in the top-left corner.
+        if (out_buffer.width > buff_w || out_buffer.height > buff_h) {
+            /* handled by the renderer's scaled path */
+        } else {
+            ALOGE("unexpected native window buffer (%p)(w:%d, h:%d, fmt:'%.4s'0x%x), expecting (w:%d, h:%d, fmt:'%.4s'0x%x)",
+                native_window,
+                out_buffer.width, out_buffer.height, (char*) &out_buffer.format, out_buffer.format,
+                buff_w, buff_h, (char*) &overlay->format, overlay->format);
+            // TODO: 8 set all black
+            ANativeWindow_unlockAndPost(native_window);
+            ANativeWindow_setBuffersGeometry(native_window, buff_w, buff_h, overlayDesc->hal_format);
+            return -1;
+        }
     }
 
     int render_ret = voutDesc->render(&out_buffer, overlay);
