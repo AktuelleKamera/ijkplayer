@@ -109,10 +109,19 @@ LOCAL_SRC_FILES += android/ijksdl_vout_android_surface.c
 LOCAL_SRC_FILES += android/ijksdl_vout_overlay_android_mediacodec.c
 endif
 
-LOCAL_SHARED_LIBRARIES := ijkffmpeg
 LOCAL_STATIC_LIBRARIES := cpufeatures libyuv_static ijkj4a
+ifeq ($(IJK_ANDROID_MONOLITHIC),1)
+LOCAL_CFLAGS += -DIJK_ANDROID_MONOLITHIC=1
+LOCAL_STATIC_LIBRARIES += ijkffmpeg_static
+else
+LOCAL_SHARED_LIBRARIES := ijkffmpeg
+endif
 
 LOCAL_MODULE := ijksdl
+ifeq ($(IJK_ANDROID_MONOLITHIC),1)
+include $(BUILD_STATIC_LIBRARY)
+else
 include $(BUILD_SHARED_LIBRARY)
+endif
 
 $(call import-module,android/cpufeatures)

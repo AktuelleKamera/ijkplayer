@@ -1184,9 +1184,18 @@ static JNINativeMethod g_methods[] = {
     { "_setFrameAtTime",        "(Ljava/lang/String;JJII)V", (void *) IjkMediaPlayer_setFrameAtTime },
 };
 
+#ifdef IJK_ANDROID_MONOLITHIC
+extern jint IJKSDL_JNI_OnLoad(JavaVM *vm, void *reserved);
+#endif
+
 JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved)
 {
     JNIEnv* env = NULL;
+
+#ifdef IJK_ANDROID_MONOLITHIC
+    if (IJKSDL_JNI_OnLoad(vm, reserved) != JNI_VERSION_1_4)
+        return -1;
+#endif
 
     g_jvm = vm;
     if ((*vm)->GetEnv(vm, (void**) &env, JNI_VERSION_1_4) != JNI_OK) {

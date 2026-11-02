@@ -212,6 +212,14 @@ else
     exit 1
 fi
 
+# Keep incompatible platform/CPU configurations out of the normal build cache.
+if [ -n "$IJK_BUILD_SUFFIX" ]; then
+    FF_BUILD_NAME="$FF_BUILD_NAME$IJK_BUILD_SUFFIX"
+    FF_BUILD_NAME_OPENSSL="$FF_BUILD_NAME_OPENSSL$IJK_BUILD_SUFFIX"
+    FF_BUILD_NAME_LIBSOXR="$FF_BUILD_NAME_LIBSOXR$IJK_BUILD_SUFFIX"
+    FF_SOURCE="$FF_BUILD_ROOT/$FF_BUILD_NAME"
+fi
+
 # [实验] 仅用于测量 gc-sections 的效果
 if [ "$IJK_TEST_GC" = "1" ]; then
     FF_EXTRA_LDFLAGS="$FF_EXTRA_LDFLAGS -Wl,--gc-sections"

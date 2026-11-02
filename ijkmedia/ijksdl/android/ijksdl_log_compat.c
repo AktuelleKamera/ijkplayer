@@ -43,7 +43,7 @@ static void log_compat_resolve(void)
         }
     }
 
-    ALOGE("log-compat: no native logging facility found\n");
+    /* Do not log here: re-entering pthread_once would deadlock. */
 }
 
 int __android_log_vprint(int prio, const char *tag, const char *fmt, va_list ap)

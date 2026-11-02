@@ -27,6 +27,7 @@
 #include "../ijksdl_egl.h"
 #include "../ijksdl_gles2.h"
 #include "../ijksdl_fourcc.h"
+#include "ijksdl_egl_gl_dynamic.h"
 
 typedef struct LegacySurfaceInfo {
     /* Raw lock() output; interpret per layout candidates:
@@ -522,7 +523,8 @@ SDL_Vout *SDL_VoutAndroid_CreateForAndroidSurface(void)
     if (ISDL_Array__init(&opaque->overlay_pool, 32))
         goto fail;
 
-    ijk_egl_gl_dynamic_init();
+    if (SDL_Android_GetApiLevel() >= IJK_API_9_GINGERBREAD)
+        ijk_egl_gl_dynamic_init();
     opaque->egl = IJK_EGL_create();
     if (!opaque->egl)
         goto fail;

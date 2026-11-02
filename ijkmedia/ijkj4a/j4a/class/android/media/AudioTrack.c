@@ -449,16 +449,14 @@ int J4A_loadClass__J4AC_android_media_AudioTrack(JNIEnv *env)
     if (class_J4AC_android_media_AudioTrack.method_setStereoVolume == NULL)
         goto fail;
 
-    class_id = class_J4AC_android_media_AudioTrack.id;
-    name     = "getAudioSessionId";
-    sign     = "()I";
-    class_J4AC_android_media_AudioTrack.method_getAudioSessionId = J4A_GetMethodID__catchAll(env, class_id, name, sign);
-    // AudioTrack#getAudioSessionId was added in API 9. It is optional for the
-    // API 7/8 legacy build; AudioTrack output does not require a session ID.
-    if (J4A_GetSystemAndroidApiLevel(env) < 9) {
-        class_J4AC_android_media_AudioTrack.method_getAudioSessionId = NULL;
-    } else if (class_J4AC_android_media_AudioTrack.method_getAudioSessionId == NULL) {
-        goto fail;
+    /* This method does not exist before API 9. Avoid probing it there. */
+    if (J4A_GetSystemAndroidApiLevel(env) >= 9) {
+        class_id = class_J4AC_android_media_AudioTrack.id;
+        name     = "getAudioSessionId";
+        sign     = "()I";
+        class_J4AC_android_media_AudioTrack.method_getAudioSessionId = J4A_GetMethodID__catchAll(env, class_id, name, sign);
+        if (class_J4AC_android_media_AudioTrack.method_getAudioSessionId == NULL)
+            goto fail;
     }
 
     if (J4A_GetSystemAndroidApiLevel(env) >= 23) {

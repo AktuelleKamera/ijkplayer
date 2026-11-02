@@ -196,6 +196,11 @@ int SDL_Android_GetApiLevel()
 }
 
 
+#ifdef IJK_ANDROID_MONOLITHIC
+#define JNI_OnLoad IJKSDL_JNI_OnLoad
+#define JNI_OnUnload IJKSDL_JNI_OnUnload
+#endif
+
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
 {
     int retval;

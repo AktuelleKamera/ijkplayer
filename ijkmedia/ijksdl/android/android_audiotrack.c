@@ -60,6 +60,9 @@ static AudioFormatMapEntry g_audio_format_map[] = {
 
 static Uint8 find_sdl_channel(int android_channel)
 {
+    /* Cupcake/Donut use channel configurations, not channel masks. */
+    if (android_channel == 2) return 1;
+    if (android_channel == 3) return 2;
     for (int i = 0; i < NELEM(g_audio_channel_map); ++i) {
         AudioChannelMapEntry *entry = &g_audio_channel_map[i];
         if (entry->android_channel == android_channel)

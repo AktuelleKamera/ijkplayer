@@ -20,6 +20,7 @@
  */
 
 #include "Build.h"
+#include <stdlib.h>
 
 typedef struct J4AC_android_os_Build__VERSION {
     jclass id;
@@ -27,6 +28,7 @@ typedef struct J4AC_android_os_Build__VERSION {
     jfieldID field_SDK_INT;
 } J4AC_android_os_Build__VERSION;
 static J4AC_android_os_Build__VERSION class_J4AC_android_os_Build__VERSION;
+static jint legacy_sdk_int;
 
 typedef struct J4AC_android_os_Build {
     jclass id;
@@ -36,6 +38,8 @@ static J4AC_android_os_Build class_J4AC_android_os_Build;
 
 jint J4AC_android_os_Build__VERSION__SDK_INT__get(JNIEnv *env)
 {
+    if (class_J4AC_android_os_Build__VERSION.field_SDK_INT == NULL)
+        return legacy_sdk_int;
     return (*env)->GetStaticIntField(env, class_J4AC_android_os_Build__VERSION.id, class_J4AC_android_os_Build__VERSION.field_SDK_INT);
 }
 
@@ -51,6 +55,10 @@ jint J4AC_android_os_Build__VERSION__SDK_INT__get__catchAll(JNIEnv *env)
 
 void J4AC_android_os_Build__VERSION__SDK_INT__set(JNIEnv *env, jint value)
 {
+    if (class_J4AC_android_os_Build__VERSION.field_SDK_INT == NULL) {
+        legacy_sdk_int = value;
+        return;
+    }
     (*env)->SetStaticIntField(env, class_J4AC_android_os_Build__VERSION.id, class_J4AC_android_os_Build__VERSION.field_SDK_INT, value);
 }
 
@@ -79,9 +87,25 @@ int J4A_loadClass__J4AC_android_os_Build__VERSION(JNIEnv *env)
     class_id = class_J4AC_android_os_Build__VERSION.id;
     name     = "SDK_INT";
     sign     = "I";
-    class_J4AC_android_os_Build__VERSION.field_SDK_INT = J4A_GetStaticFieldID__catchAll(env, class_id, name, sign);
-    if (class_J4AC_android_os_Build__VERSION.field_SDK_INT == NULL)
-        goto fail;
+    class_J4AC_android_os_Build__VERSION.field_SDK_INT = (*env)->GetStaticFieldID(env, class_id, name, sign);
+    if (class_J4AC_android_os_Build__VERSION.field_SDK_INT == NULL) {
+        /* SDK_INT was introduced in Donut. Cupcake exposes only SDK (String). */
+        (*env)->ExceptionClear(env);
+        jfieldID sdk_field = J4A_GetStaticFieldID__catchAll(env, class_id, "SDK", "Ljava/lang/String;");
+        if (!sdk_field)
+            goto fail;
+        jstring sdk = (jstring)(*env)->GetStaticObjectField(env, class_id, sdk_field);
+        if (J4A_ExceptionCheck__catchAll(env) || !sdk)
+            goto fail;
+        const char *value = (*env)->GetStringUTFChars(env, sdk, NULL);
+        if (value) {
+            legacy_sdk_int = atoi(value);
+            (*env)->ReleaseStringUTFChars(env, sdk, value);
+        }
+        (*env)->DeleteLocalRef(env, sdk);
+        if (legacy_sdk_int <= 0)
+            goto fail;
+    }
 
     J4A_ALOGD("J4ALoader: OK: '%s' loaded\n", "android.os.Build$VERSION");
     ret = 0;

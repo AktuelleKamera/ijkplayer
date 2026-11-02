@@ -62,12 +62,22 @@ Uint64 SDL_GetTickHR(void)
     Uint64 clock;
 #if defined(__ANDROID__)
     struct timespec now;
+    int result;
 #ifdef CLOCK_MONOTONIC_COARSE
-    clock_gettime(CLOCK_MONOTONIC_COARSE, &now);
+    result = clock_gettime(CLOCK_MONOTONIC_COARSE, &now);
 #else
-    clock_gettime(CLOCK_MONOTONIC_HR, &now);
+    result = -1;
 #endif
-    clock = now.tv_sec * 1000 + now.tv_nsec / 1000000;
+    /* Kernels before 2.6.32 do not implement MONOTONIC_COARSE. */
+    if (result != 0)
+        result = clock_gettime(CLOCK_MONOTONIC, &now);
+    if (result == 0) {
+        clock = (Uint64)now.tv_sec * 1000 + now.tv_nsec / 1000000;
+    } else {
+        struct timeval wall;
+        gettimeofday(&wall, NULL);
+        clock = (Uint64)wall.tv_sec * 1000 + wall.tv_usec / 1000;
+    }
 #elif defined(__APPLE__)
     if (!g_is_mach_base_info_inited) {
         g_mach_base_info_ret = mach_timebase_info(&g_mach_base_info);
@@ -148,7 +158,10 @@ float SDL_SpeedSamplerAdd(SDL_SpeedSampler *sampler, int enable_log, const char 
     if (sampler->count < 2)
         return 0;
 
-    float samples_per_second = 1000.0f * (sampler->count - 1) / (current - sampler->samples[sampler->first_index]);
+    Uint64 first = sampler->samples[sampler->first_index];
+    if (current <= first)
+        return 0;
+    float samples_per_second = 1000.0f * (sampler->count - 1) / (current - first);
 
     if (enable_log && (sampler->last_log_time + 1000 < current || sampler->last_log_time > current)) {
         sampler->last_log_time = current;
