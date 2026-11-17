@@ -1170,15 +1170,14 @@ static void check_external_clock_speed(VideoState *is) {
 /* seek in the stream */
 static void stream_seek(VideoState *is, int64_t pos, int64_t rel, int seek_by_bytes)
 {
-    if (!is->seek_req) {
-        is->seek_pos = pos;
-        is->seek_rel = rel;
-        is->seek_flags &= ~AVSEEK_FLAG_BYTE;
-        if (seek_by_bytes)
-            is->seek_flags |= AVSEEK_FLAG_BYTE;
-        is->seek_req = 1;
-        SDL_CondSignal(is->continue_read_thread);
-    }
+    is->seek_pos = pos;
+    is->post_seek_drop_before_us = pos > 0 ? pos : 0;
+    is->seek_rel = rel;
+    is->seek_flags &= ~AVSEEK_FLAG_BYTE;
+    if (seek_by_bytes)
+        is->seek_flags |= AVSEEK_FLAG_BYTE;
+    is->seek_req = 1;
+    SDL_CondSignal(is->continue_read_thread);
 }
 
 /* pause or resume the video */
@@ -1343,6 +1342,7 @@ retry:
 
             if (lastvp->serial != vp->serial)
                 is->frame_timer = av_gettime_relative() / 1000000.0;
+                is->post_seek_drop_before_us = is->seek_pos;
 
             if (is->paused)
                 goto display;
@@ -1521,6 +1521,15 @@ static int queue_picture(FFPlayer *ffp, AVFrame *src_frame, double pts, double d
 
     int64_t deviation2 = 0;
     int64_t deviation3 = 0;
+
+    if (is->post_seek_drop_before_us > 0 && !isnan(pts)) {
+        int64_t frame_us = (int64_t)(pts * 1000 * 1000);
+        if (frame_us < is->post_seek_drop_before_us - 100000) {
+            return 1;
+        }
+        is->post_seek_drop_before_us = 0;
+        is->frame_timer = av_gettime_relative() / 1000000.0;
+    }
 
     if (ffp->enable_accurate_seek && is->video_accurate_seek_req && !is->seek_req) {
         if (!isnan(pts)) {
@@ -3416,6 +3425,7 @@ static int read_thread(void *arg)
                 is->latest_audio_seek_load_serial = is->audioq.serial;
                 is->latest_seek_load_start_at = av_gettime();
             }
+                is->frame_timer = av_gettime_relative() / 1000000.0;
             ffp->dcc.current_high_water_mark_in_ms = ffp->dcc.first_high_water_mark_in_ms;
             is->seek_req = 0;
             is->queue_attachments_req = 1;

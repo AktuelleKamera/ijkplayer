@@ -285,6 +285,7 @@ typedef struct VideoState {
     int seek_flags;
     int64_t seek_pos;
     int64_t seek_rel;
+    int64_t post_seek_drop_before_us;
 #ifdef FFP_MERGE
     int read_pause_return;
 #endif
