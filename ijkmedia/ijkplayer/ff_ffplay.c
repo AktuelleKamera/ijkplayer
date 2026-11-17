@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2003 Bilibili
  * Copyright (c) 2003 Fabrice Bellard
  * Copyright (c) 2013 Zhang Rui <bbcallen@gmail.com>
@@ -21,6 +21,7 @@
  */
 
 #include "ff_ffplay.h"
+#include <android/log.h>
 
 /**
  * @file
