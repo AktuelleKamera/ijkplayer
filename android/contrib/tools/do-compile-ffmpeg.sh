@@ -109,13 +109,17 @@ elif [ "$FF_ARCH" = "armv5" ]; then
     if [ "$IJK_ARMV6_DEFAULT" = "1" ]; then
         # [BiliClassic] app armeabi = ARMv6 + VFP (v6vfp variant). VFP implies
         # ARMv6 or newer, so target armv6 and enable VFP for the software decoder.
-        FF_EXTRA_CFLAGS="$FF_EXTRA_CFLAGS -march=armv6 -mtune=arm1136jf-s -mfpu=vfp -mfloat-abi=softfp"
+        FF_EXTRA_CFLAGS="$FF_EXTRA_CFLAGS -march=armv6 -mtune=arm1136jf-s -mfpu=vfp -mfloat-abi=softfp -Os"
     else
-        FF_EXTRA_CFLAGS="$FF_EXTRA_CFLAGS -march=armv5te -mtune=arm9tdmi -msoft-float"
+        FF_EXTRA_CFLAGS="$FF_EXTRA_CFLAGS -march=armv5te -mtune=arm9tdmi -mfloat-abi=soft -msoft-float"
     fi
     FF_EXTRA_LDFLAGS="$FF_EXTRA_LDFLAGS"
 
-    FF_ASSEMBLER_SUB_DIRS="arm"
+    if [ "$IJK_ARMV5_NO_VFP" = "1" ]; then
+        FF_ASSEMBLER_SUB_DIRS=""
+    else
+        FF_ASSEMBLER_SUB_DIRS="arm"
+    fi
 
 elif [ "$FF_ARCH" = "x86" ]; then
     FF_BUILD_NAME=ffmpeg-x86
@@ -309,7 +313,7 @@ FF_CFLAGS="-O3 -Wall -pipe \
 export COMMON_FF_CFG_FLAGS=
 . $FF_BUILD_ROOT/../../config/module.sh
 if [ "$IJK_ARMV5_NO_VFP" = "1" ]; then
-    COMMON_FF_CFG_FLAGS="$COMMON_FF_CFG_FLAGS --disable-vfp"
+    COMMON_FF_CFG_FLAGS="$COMMON_FF_CFG_FLAGS --disable-vfp --disable-neon"
 fi
 
 
@@ -360,6 +364,8 @@ if [ "$FF_ARCH" = "x86" ] || [ "$FF_ARCH" = "x86_64" ]; then
 elif [ "$FF_ARCH" = "mips64" ]; then
     # mips64: 工具链是 r6，而 ffmpeg 的部分 MIPS 内联汇编用了 r6 删除的 lwl/lwr，
     # 且 HAVE_MIPS64R6 在 NDK 工具链上探测不通过，只能整体关掉汇编
+    FF_CFG_FLAGS="$FF_CFG_FLAGS --disable-asm --disable-inline-asm"
+elif [ "$FF_ARCH" = "armv5" ] && [ "$IJK_ARMV5_NO_VFP" = "1" ]; then
     FF_CFG_FLAGS="$FF_CFG_FLAGS --disable-asm --disable-inline-asm"
 else
     # Optimization options (experts only):
