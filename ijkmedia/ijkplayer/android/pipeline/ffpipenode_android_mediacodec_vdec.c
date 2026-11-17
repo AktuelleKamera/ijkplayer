@@ -155,6 +155,11 @@ static SDL_AMediaCodec *create_codec_l(JNIEnv *env, IJKFF_Pipenode *node)
             /* this is the only acceptable value on Nexus S */
             opaque->n_buf_out = 1;
             ALOGD("using buffered output for %s", mcc->codec_name);
+        } else if (opaque->ffp->mediacodec_reorder
+                && (0 == strncasecmp(mcc->codec_name, "OMX.SEC.", 8)
+                || 0 == strncasecmp(mcc->codec_name, "OMX.Exynos.", 11))) {
+            opaque->n_buf_out = 3;
+            ALOGD("using buffered output for %s", mcc->codec_name);
         }
     }
 
@@ -494,6 +499,16 @@ static int feed_input_buffer2(JNIEnv *env, IJKFF_Pipenode *node, int64_t timeUs,
                     if (opaque->input_packet_count > 0) {
                         // flush empty queue cause error on OMX.SEC.AVC.Decoder (Nexus S)
                         SDL_VoutAndroid_invalidateAllBuffers(opaque->weak_vout);
+                        if (opaque->n_buf_out) {
+                            int flush_i;
+                            for (flush_i = 0; flush_i < opaque->off_buf_out; flush_i++) {
+                                SDL_AMediaCodec_releaseOutputBuffer(opaque->acodec,
+                                        opaque->amc_buf_out[flush_i].port, false);
+                                opaque->amc_buf_out[flush_i].pts = AV_NOPTS_VALUE;
+                            }
+                            opaque->off_buf_out = 0;
+                            opaque->last_queued_pts = AV_NOPTS_VALUE;
+                        }
                         SDL_AMediaCodec_flush(opaque->acodec);
                         opaque->input_packet_count = 0;
                     }
@@ -740,6 +755,16 @@ static int feed_input_buffer(JNIEnv *env, IJKFF_Pipenode *node, int64_t timeUs, 
                     if (opaque->input_packet_count > 0) {
                         // flush empty queue cause error on OMX.SEC.AVC.Decoder (Nexus S)
                         SDL_VoutAndroid_invalidateAllBuffers(opaque->weak_vout);
+                        if (opaque->n_buf_out) {
+                            int flush_i;
+                            for (flush_i = 0; flush_i < opaque->off_buf_out; flush_i++) {
+                                SDL_AMediaCodec_releaseOutputBuffer(opaque->acodec,
+                                        opaque->amc_buf_out[flush_i].port, false);
+                                opaque->amc_buf_out[flush_i].pts = AV_NOPTS_VALUE;
+                            }
+                            opaque->off_buf_out = 0;
+                            opaque->last_queued_pts = AV_NOPTS_VALUE;
+                        }
                         SDL_AMediaCodec_flush(opaque->acodec);
                         opaque->input_packet_count = 0;
                     }
@@ -1067,7 +1092,7 @@ static void sort_amc_buf_out(AMC_Buf_Out *buf_out, int size) {
         for (j = i + 1; j < size; j++) {
             a = buf_out + i;
             b = buf_out + j;
-            if (a->pts < b->pts) {
+            if (a->pts > b->pts) {
                 tmp = *a;
                 *a = *b;
                 *b = tmp;
@@ -1076,6 +1101,54 @@ static void sort_amc_buf_out(AMC_Buf_Out *buf_out, int size) {
     }
 }
 
+
+static int output_sorted_frame(IJKFF_Pipenode *node, AVFrame *frame, int *got_frame,
+                               int output_buffer_index,
+                               SDL_AMediaCodecBufferInfo *buffer_info)
+{
+    IJKFF_Pipenode_Opaque *opaque = node->opaque;
+    AMC_Buf_Out *buf_out;
+    double pts = pts_from_buffer_info(node, buffer_info);
+    int i;
+    int oldest = 0;
+    int ret;
+
+    if (opaque->off_buf_out < opaque->n_buf_out) {
+        buf_out = &opaque->amc_buf_out[opaque->off_buf_out++];
+        buf_out->acodec_serial = SDL_AMediaCodec_getSerial(opaque->acodec);
+        buf_out->port = output_buffer_index;
+        buf_out->info = *buffer_info;
+        buf_out->pts = pts;
+        sort_amc_buf_out(opaque->amc_buf_out, opaque->off_buf_out);
+        return 0;
+    }
+
+    for (i = 1; i < opaque->n_buf_out; i++) {
+        if (opaque->amc_buf_out[i].pts < opaque->amc_buf_out[oldest].pts)
+            oldest = i;
+    }
+
+    {
+        AMC_Buf_Out old = opaque->amc_buf_out[oldest];
+        if (opaque->last_queued_pts != AV_NOPTS_VALUE &&
+                old.pts <= opaque->last_queued_pts + 0.000001) {
+            SDL_AMediaCodec_releaseOutputBuffer(opaque->acodec, old.port, false);
+            *got_frame = 0;
+            ret = 0;
+        } else {
+            ret = amc_fill_frame(node, frame, got_frame, old.port, old.acodec_serial, &old.info);
+            opaque->last_queued_pts = old.pts;
+        }
+    }
+
+    buf_out = &opaque->amc_buf_out[oldest];
+    buf_out->acodec_serial = SDL_AMediaCodec_getSerial(opaque->acodec);
+    buf_out->port = output_buffer_index;
+    buf_out->info = *buffer_info;
+    buf_out->pts = pts;
+    sort_amc_buf_out(opaque->amc_buf_out, opaque->n_buf_out);
+    return ret;
+}
 static int drain_output_buffer_l(JNIEnv *env, IJKFF_Pipenode *node, int64_t timeUs, int *dequeue_count, AVFrame *frame, int *got_frame)
 {
     IJKFF_Pipenode_Opaque *opaque   = node->opaque;
@@ -1179,63 +1252,7 @@ static int drain_output_buffer_l(JNIEnv *env, IJKFF_Pipenode *node, int64_t time
 #endif
 
         if (opaque->n_buf_out) {
-            AMC_Buf_Out *buf_out;
-
-            if (opaque->off_buf_out < opaque->n_buf_out) {
-                // ALOGD("filling buffer... %d", opaque->off_buf_out);
-                buf_out = &opaque->amc_buf_out[opaque->off_buf_out++];
-                buf_out->acodec_serial = SDL_AMediaCodec_getSerial(opaque->acodec);
-                buf_out->port = output_buffer_index;
-                buf_out->info = bufferInfo;
-                buf_out->pts = pts_from_buffer_info(node, &bufferInfo);
-                sort_amc_buf_out(opaque->amc_buf_out, opaque->off_buf_out);
-            } else {
-                double pts;
-
-                pts = pts_from_buffer_info(node, &bufferInfo);
-                if (opaque->last_queued_pts != AV_NOPTS_VALUE &&
-                    pts < opaque->last_queued_pts) {
-                    // FIXME: drop unordered picture to avoid dither
-                    // ALOGE("early picture, drop!");
-                    // SDL_AMediaCodec_releaseOutputBuffer(opaque->acodec, output_buffer_index, false);
-                    // goto done;
-                }
-                /* already sorted */
-                buf_out = &opaque->amc_buf_out[opaque->off_buf_out - 1];
-                /* new picture is the most aged, send now */
-                if (pts < buf_out->pts) {
-                    ret = amc_fill_frame(node, frame, got_frame, output_buffer_index, SDL_AMediaCodec_getSerial(opaque->acodec), &bufferInfo);
-                    opaque->last_queued_pts = pts;
-                    // ALOGD("pts = %f", pts);
-                } else {
-                    int i;
-
-                    /* find one to send */
-                    for (i = opaque->off_buf_out - 1; i >= 0; i--) {
-                        buf_out = &opaque->amc_buf_out[i];
-                        if (pts > buf_out->pts) {
-                            ret = amc_fill_frame(node, frame, got_frame, buf_out->port, buf_out->acodec_serial, &buf_out->info);
-                            opaque->last_queued_pts = buf_out->pts;
-                            // ALOGD("pts = %f", buf_out->pts);
-                            /* replace for sort later */
-                            buf_out->acodec_serial = SDL_AMediaCodec_getSerial(opaque->acodec);
-                            buf_out->port = output_buffer_index;
-                            buf_out->info = bufferInfo;
-                            buf_out->pts = pts_from_buffer_info(node, &bufferInfo);
-                            sort_amc_buf_out(opaque->amc_buf_out, opaque->n_buf_out);
-                            break;
-                        }
-                    }
-                    /* need to discard current buffer */
-                    if (i < 0) {
-                        // ALOGE("buffer too small, drop picture!");
-                        if (!(bufferInfo.flags & AMEDIACODEC__BUFFER_FLAG_FAKE_FRAME)) {
-                            SDL_AMediaCodec_releaseOutputBuffer(opaque->acodec, output_buffer_index, false);
-                            goto done;
-                        }
-                    }
-                }
-            }
+            output_sorted_frame(node, frame, got_frame, output_buffer_index, &bufferInfo);
         } else {
             ret = amc_fill_frame(node, frame, got_frame, output_buffer_index, SDL_AMediaCodec_getSerial(opaque->acodec), &bufferInfo);
         }
@@ -1327,62 +1344,7 @@ static int drain_output_buffer2_l(JNIEnv *env, IJKFF_Pipenode *node, int64_t tim
             ++*dequeue_count;
 
         if (opaque->n_buf_out) {
-            AMC_Buf_Out *buf_out;
-            if (opaque->off_buf_out < opaque->n_buf_out) {
-                // ALOGD("filling buffer... %d", opaque->off_buf_out);
-                buf_out = &opaque->amc_buf_out[opaque->off_buf_out++];
-                buf_out->acodec_serial = SDL_AMediaCodec_getSerial(opaque->acodec);
-                buf_out->port = output_buffer_index;
-                buf_out->info = bufferInfo;
-                buf_out->pts = pts_from_buffer_info(node, &bufferInfo);
-                sort_amc_buf_out(opaque->amc_buf_out, opaque->off_buf_out);
-            } else {
-                double pts;
-
-                pts = pts_from_buffer_info(node, &bufferInfo);
-                if (opaque->last_queued_pts != AV_NOPTS_VALUE &&
-                    pts < opaque->last_queued_pts) {
-                    // FIXME: drop unordered picture to avoid dither
-                    // ALOGE("early picture, drop!");
-                    // SDL_AMediaCodec_releaseOutputBuffer(opaque->acodec, output_buffer_index, false);
-                    // goto done;
-                }
-                /* already sorted */
-                buf_out = &opaque->amc_buf_out[opaque->off_buf_out - 1];
-                /* new picture is the most aged, send now */
-                if (pts < buf_out->pts) {
-                    amc_fill_frame(node, frame, got_frame, output_buffer_index, SDL_AMediaCodec_getSerial(opaque->acodec), &bufferInfo);
-                    opaque->last_queued_pts = pts;
-                    // ALOGD("pts = %f", pts);
-                } else {
-                    int i;
-
-                    /* find one to send */
-                    for (i = opaque->off_buf_out - 1; i >= 0; i--) {
-                        buf_out = &opaque->amc_buf_out[i];
-                        if (pts > buf_out->pts) {
-                            amc_fill_frame(node, frame, got_frame, buf_out->port, buf_out->acodec_serial, &buf_out->info);
-                            opaque->last_queued_pts = buf_out->pts;
-                            // ALOGD("pts = %f", buf_out->pts);
-                            /* replace for sort later */
-                            buf_out->acodec_serial = SDL_AMediaCodec_getSerial(opaque->acodec);
-                            buf_out->port = output_buffer_index;
-                            buf_out->info = bufferInfo;
-                            buf_out->pts = pts_from_buffer_info(node, &bufferInfo);
-                            sort_amc_buf_out(opaque->amc_buf_out, opaque->n_buf_out);
-                            break;
-                        }
-                    }
-                    /* need to discard current buffer */
-                    if (i < 0) {
-                        // ALOGE("buffer too small, drop picture!");
-                        if (!(bufferInfo.flags & AMEDIACODEC__BUFFER_FLAG_FAKE_FRAME)) {
-                            SDL_AMediaCodec_releaseOutputBuffer(opaque->acodec, output_buffer_index, false);
-                            return 0;
-                        }
-                    }
-                }
-            }
+            output_sorted_frame(node, frame, got_frame, output_buffer_index, &bufferInfo);
         } else {
             amc_fill_frame(node, frame, got_frame, output_buffer_index, SDL_AMediaCodec_getSerial(opaque->acodec), &bufferInfo);
         }

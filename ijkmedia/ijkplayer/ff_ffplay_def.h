@@ -712,6 +712,7 @@ typedef struct FFPlayer {
     int enable_accurate_seek;
     int accurate_seek_timeout;
     int mediacodec_sync;
+    int mediacodec_reorder;
     int skip_calc_frame_rate;
     int get_frame_mode;
     GetImgInfo *get_img_info;
