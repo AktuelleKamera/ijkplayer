@@ -27,7 +27,7 @@
 
 #include "../ijksdl_aout.h"
 
-SDL_Aout *SDL_AoutAndroid_CreateForAudioTrack();
+SDL_Aout *SDL_AoutAndroid_CreateForAudioTrack(int buffer_size);
 bool      SDL_AoutAndroid_IsObjectOfAudioTrack(SDL_Aout *aout);
 
 #endif

@@ -51,6 +51,7 @@ typedef struct SDL_Aout_Opaque {
     SDL_Android_AudioTrack* atrack;
     uint8_t *buffer;
     int buffer_size;
+    int copy_size;
 
     volatile bool need_flush;
     volatile bool pause_on;
@@ -76,7 +77,9 @@ static int aout_thread_n(JNIEnv *env, SDL_Aout *aout)
     SDL_AudioCallback audio_cblk = opaque->spec.callback;
     void *userdata = opaque->spec.userdata;
     uint8_t *buffer = opaque->buffer;
-    int copy_size = 256;
+    int copy_size = opaque->copy_size > 0 ? opaque->copy_size : 4096;
+    if (copy_size > opaque->buffer_size)
+        copy_size = opaque->buffer_size;
 
     assert(atrack);
     assert(buffer);
@@ -131,9 +134,15 @@ static int aout_thread_n(JNIEnv *env, SDL_Aout *aout)
             opaque->need_flush = 0;
             SDL_Android_AudioTrack_flush(env, atrack);
         } else {
-            int written = SDL_Android_AudioTrack_write(env, atrack, buffer, copy_size);
-            if (written != copy_size) {
-                ALOGW("AudioTrack: not all data copied %d/%d", (int)written, (int)copy_size);
+            int offset = 0;
+            while (offset < copy_size) {
+                int written = SDL_Android_AudioTrack_write(env, atrack,
+                        buffer + offset, copy_size - offset);
+                if (written <= 0) {
+                    ALOGW("AudioTrack: write failed %d/%d", written, copy_size - offset);
+                    break;
+                }
+                offset += written;
             }
         }
 
@@ -308,7 +317,7 @@ static void func_set_playback_rate(SDL_Aout *aout, float speed)
     SDL_UnlockMutex(opaque->wakeup_mutex);
 }
 
-SDL_Aout *SDL_AoutAndroid_CreateForAudioTrack()
+SDL_Aout *SDL_AoutAndroid_CreateForAudioTrack(int buffer_size)
 {
     SDL_Aout *aout = SDL_Aout_CreateInternal(sizeof(SDL_Aout_Opaque));
     if (!aout)
@@ -318,6 +327,7 @@ SDL_Aout *SDL_AoutAndroid_CreateForAudioTrack()
     opaque->wakeup_cond  = SDL_CreateCond();
     opaque->wakeup_mutex = SDL_CreateMutex();
     opaque->speed        = 1.0f;
+    opaque->copy_size    = buffer_size > 0 ? buffer_size : 4096;
 
     aout->opaque_class = &g_audiotrack_class;
     aout->free_l       = aout_free_l;

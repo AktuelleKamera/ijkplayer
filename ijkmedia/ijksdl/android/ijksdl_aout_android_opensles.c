@@ -25,6 +25,8 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <math.h>
+#include <string.h>
+#include <sys/system_properties.h>
 #include <inttypes.h>
 #include <jni.h>
 #include <SLES/OpenSLES.h>
@@ -41,8 +43,35 @@
 //#define SDLTRACE ALOGW
 #endif
 
-#define OPENSLES_BUFFERS 255 /* maximum number of buffers */
+#define OPENSLES_BUFFERS 4 /* maximum number of buffers */
 #define OPENSLES_BUFLEN  10 /* ms */
+
+static int get_opensles_buflen_ms(int configured_ms) {
+    if (configured_ms >= 5 && configured_ms <= 50) {
+        return configured_ms;
+    }
+    char value[PROP_VALUE_MAX] = {0};
+    const char *props[] = {"ro.hardware", "ro.board.platform", "ro.product.board"};
+    for (int i = 0; i < 3; i++) {
+        value[0] = 0;
+        if (__system_property_get(props[i], value) > 0
+                && (strstr(value, "smdk4x12") || strstr(value, "exynos4")
+                || strstr(value, "midas") || strstr(value, "SMDK4x12"))) {
+            return 15;
+        }
+    }
+    value[0] = 0;
+    if (__system_property_get("ro.product.model", value) > 0) {
+        if (strstr(value, "GT-I9300") || strstr(value, "GT-I9305")
+                || strstr(value, "GT-N710") || strstr(value, "GT-N800")
+                || strstr(value, "GT-N801") || strstr(value, "GT-N802")
+                || strstr(value, "GT-N510") || strstr(value, "GT-N511")
+                || strstr(value, "GT-N512")) {
+            return 15;
+        }
+    }
+    return OPENSLES_BUFLEN;
+}
 
 static SDL_Class g_opensles_class = {
     .name = "OpenSLES",
@@ -61,6 +90,7 @@ typedef struct SDL_Aout_Opaque {
     int              milli_per_buffer;
     int              frames_per_buffer;
     int              bytes_per_buffer;
+    int              config_buffer_ms;
 
     SLObjectItf                     slObject;
     SLEngineItf                     slEngine;
@@ -396,7 +426,7 @@ static int aout_open_audio(SDL_Aout *aout, const SDL_AudioSpec *desired, SDL_Aud
     // CHECK_OPENSL_ERROR(ret, "%s: slBufferQueueItf->slPlayItf() failed", __func__);
 
     opaque->bytes_per_frame   = format_pcm->numChannels * format_pcm->bitsPerSample / 8;
-    opaque->milli_per_buffer  = OPENSLES_BUFLEN;
+    opaque->milli_per_buffer  = get_opensles_buflen_ms(opaque->config_buffer_ms);
     opaque->frames_per_buffer = opaque->milli_per_buffer * format_pcm->samplesPerSec / 1000000; // samplesPerSec is in milli
     opaque->bytes_per_buffer  = opaque->bytes_per_frame * opaque->frames_per_buffer;
     opaque->buffer_capacity   = OPENSLES_BUFFERS * opaque->bytes_per_buffer;
@@ -484,7 +514,7 @@ static double aout_get_latency_seconds(SDL_Aout *aout)
     return latency;
 }
 
-SDL_Aout *SDL_AoutAndroid_CreateForOpenSLES()
+SDL_Aout *SDL_AoutAndroid_CreateForOpenSLES(int buffer_ms)
 {
     SDLTRACE("%s\n", __func__);
     SDL_Aout *aout = SDL_Aout_CreateInternal(sizeof(SDL_Aout_Opaque));
@@ -492,6 +522,7 @@ SDL_Aout *SDL_AoutAndroid_CreateForOpenSLES()
         return NULL;
 
     SDL_Aout_Opaque *opaque = aout->opaque;
+    opaque->config_buffer_ms = buffer_ms;
     opaque->wakeup_cond = SDL_CreateCond();
     opaque->wakeup_mutex = SDL_CreateMutex();
 
