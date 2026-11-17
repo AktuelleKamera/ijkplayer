@@ -28,6 +28,7 @@ IJK_ANDROID_LEGACY_SURFACE := 0
 ifneq ($(filter android-3 android-4 android-5 android-8,$(APP_PLATFORM)),)
 IJK_ANDROID_LEGACY_SURFACE := 1
 LOCAL_CFLAGS += -DIJK_ANDROID_LEGACY_SURFACE=1
+LOCAL_C_INCLUDES += $(LOCAL_PATH)/legacy_include
 endif
 
 ifeq ($(IJK_ANDROID_LEGACY_SURFACE),1)
